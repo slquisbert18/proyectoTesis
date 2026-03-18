@@ -4,21 +4,32 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.RectF;
+import android.graphics.PorterDuff;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
-import com.example.prototipotesis.ml.BoundingBox;
 
-import com.example.prototipotesis.ml.BoundingBox;
+import com.example.prototipotesis.ml.TrackedPlate;
 
-public class BoundingBoxOverlay extends View{
+import java.util.ArrayList;
+import java.util.List;
+
+public class BoundingBoxOverlay extends View {
+
     private Paint pinturaCaja;
     private Paint pinturaTexto;
-    private RectF cajaActual;
-    private String textoPlaca = ""; // variable temporal para mostrar caracteres encima de la caja
+
+    // lista de placas trackeadas
+    private List<TrackedPlate> placas = new ArrayList<>();
 
     public BoundingBoxOverlay(Context contexto, AttributeSet atributos) {
         super(contexto, atributos);
+
+        // para que la vista se dibuje correctamente
+        setWillNotDraw(false);
+
+        // necesario para limpiar canvas
+        setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         pinturaCaja = new Paint();
         pinturaCaja.setStyle(Paint.Style.STROKE);
@@ -32,43 +43,54 @@ public class BoundingBoxOverlay extends View{
         pinturaTexto.setFakeBoldText(true);
     }
 
-    public void actualizarCaja(RectF caja) {
-        this.cajaActual = caja;
-        invalidate(); // fuerza redibujado
-    }
-
-    public void limpiar(){
-        this.cajaActual = null;
-        this.textoPlaca = "";
+    // actualizar lista de placas
+    public void actualizarPlacas(List<TrackedPlate> nuevasPlacas) {
+        if (nuevasPlacas != null) {
+            this.placas = nuevasPlacas;
+        } else {
+            this.placas = new ArrayList<>();
+        }
         invalidate();
     }
 
-    public void setTextoPlaca(String texto){
-        this.textoPlaca = texto;
-        invalidate(); // redibuja el overlay
+    // asociar texto OCR a una placa específica
+    public void actualizarTexto(int idPlaca, String texto){
+        invalidate();
+    }
+
+    public void limpiar(){
+        this.placas = new ArrayList<>();
+        invalidate();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
+        //limpiamos el canvas antes de dibujar
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+
         super.onDraw(canvas);
 
-        if (cajaActual != null) {
+        if (placas == null || placas.isEmpty()) return;
+
+        for (TrackedPlate placa : placas) {
+
             // dibujar rectangulo
-            canvas.drawRect(cajaActual, pinturaCaja);
+            canvas.drawRect(placa.caja, pinturaCaja);
 
-            // dibujar texto encima de la caja
-            if (textoPlaca != null && !textoPlaca.isEmpty()){
-                float posicionX = cajaActual.left;
-                float posicionY = cajaActual.top - 10;
+            // obtener texto del OCR estabilizado
+            String texto = placa.texto;
 
-                // si esta muy arriba lo bajamos
-                if (posicionY < 60){
-                    posicionY = cajaActual.top - 10;
+            if (texto != null && !texto.isEmpty()) {
+
+                float posicionX = placa.caja.left;
+                float posicionY = placa.caja.top - 15;
+
+                if (posicionY < 60) {
+                    posicionY = placa.caja.bottom + 60;
                 }
 
-                canvas.drawText(textoPlaca, posicionX, posicionY, pinturaTexto);
+                canvas.drawText(texto, posicionX, posicionY, pinturaTexto);
             }
         }
     }
-
 }

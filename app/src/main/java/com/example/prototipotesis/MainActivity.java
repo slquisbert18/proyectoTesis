@@ -16,39 +16,37 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
-import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
 import android.widget.Toast;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
 
 import com.example.prototipotesis.camara.AnalizadorFrames;
 import com.example.prototipotesis.camara.GestorCamara;
-import com.example.prototipotesis.ml.BoundingBox;
-import com.example.prototipotesis.ml.DetectorPlacas;
+import com.example.prototipotesis.processors.PlateProcessor;
 import com.example.prototipotesis.ml.TFLiteHelper;
-import com.example.prototipotesis.ocr.NormalizarPlaca;
-import com.example.prototipotesis.ocr.OCRHelper;
+import com.example.prototipotesis.ml.TrackedPlate;
+import com.example.prototipotesis.processors.VehicleProcessor;
 import com.example.prototipotesis.utils.BoundingBoxOverlay;
 import com.example.prototipotesis.utils.ImageUtils;
 
 import java.io.IOException;
-import java.net.URI;
+import java.util.Arrays;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    private TFLiteHelper helperModelo;
-    private DetectorPlacas detectorPlacas;
-    private OCRHelper ocrHelper;
+    private TFLiteHelper vehicleHelper;
+    private TFLiteHelper plateHelper;
+    private Interpreter vehiculeInterpreter;
+    private Interpreter plateInterpreter;
+    //*************************************************
     private GestorCamara gestorCamara;
     //*************************************************
-    private ImageView ivOriginal;
-    private ImageView ivPlaca;
-    private EditText etPlaca;
     private PreviewView previewCamara;
+    private PlateProcessor procesadorPlacas;
+    private VehicleProcessor vehiculoProcessor;
 
     // capa donde se dibujaran las cajas sobre las detecciones
     private BoundingBoxOverlay olBoundingBox;
@@ -95,43 +93,48 @@ public class MainActivity extends AppCompatActivity {
         Button btnGaleria = findViewById(R.id.btnGaleria);
 
         try {
-            // 1. Inicializar el helper del modelo
-            helperModelo = new TFLiteHelper(
+            // iniciamos los helpers
+            // modelo VEHICULOS
+            vehicleHelper = new TFLiteHelper(
+                    this, "modelos/yoloDetector.tflite"
+            );
+            vehiculeInterpreter = vehicleHelper.getInterprete();
+            vehiculoProcessor = new VehicleProcessor(vehiculeInterpreter);
+
+            // modelo PLACAS
+            plateHelper = new TFLiteHelper(
                     this,
                     "modelos/best_placas16.tflite"
             );
+            plateInterpreter = plateHelper.getInterprete();
+            procesadorPlacas = new PlateProcessor(plateInterpreter);
 
-            // Mensaje de éxito
-            Log.d(
-                    "PRUEBA_MODELO",
-                    "Modelo TFLite cargado correctamente"
-            );
-
-            // creacion del interprete
-            Interpreter interprete = helperModelo.getInterprete();
+            // 2. Iniciar la camara
 
             previewCamara.post(() -> {
 
                 int anchoPreview = previewCamara.getWidth();
                 int altoPreview = previewCamara.getHeight();
-                Log.d("ANCHO_ALTO", "Ancho: " + anchoPreview + " Alto: " + altoPreview);
+                //Log.d("ANCHO_ALTO", "Ancho: " + anchoPreview + " Alto: " + altoPreview);
 
                 AnalizadorFrames analizadorFrames =
                         new AnalizadorFrames(
                                 this,
-                                interprete,
-                                rectangulo -> {
-                                    if (rectangulo != null){
-                                        olBoundingBox.actualizarCaja(rectangulo);
+                                procesadorPlacas,
+                                placas -> {
+                                    if (placas != null){
+                                        olBoundingBox.actualizarPlacas(placas);
+                                        Log.d("OVERLAY", "Placas recibidas: "+ placas.size());
                                     }
                                     else{
                                         olBoundingBox.limpiar();
                                     }
                                 },
-                                olBoundingBox,
                                 anchoPreview,
                                 altoPreview
                         );
+
+                // Iniciar la camara
                 gestorCamara = new GestorCamara(
                         this,
                         previewCamara,
@@ -140,11 +143,6 @@ public class MainActivity extends AppCompatActivity {
                 gestorCamara.verificarPermisos();
             });
 
-            // 2. creamos el detector de placas
-            detectorPlacas = new DetectorPlacas(interprete);
-
-            // 3. iniciar el ocrHelper
-            ocrHelper = new OCRHelper();
 
         } catch (IOException error) {
             Toast.makeText(this, "Error cargando el modelo", Toast.LENGTH_LONG).show();
@@ -253,76 +251,23 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        ivOriginal.setImageBitmap(frameOriginal);
-
         frameOriginal = ImageUtils.convertirABitmapEditable(frameOriginal);
 
-        // 1. deteccion de placas
-        float[][][] salida = detectorPlacas.detectarPlacas(frameOriginal);
+        int anchoPreview = previewCamara.getWidth();
+        int altoPreview = previewCamara.getHeight();
 
-        // 2. obtenemos la mejor boundingBox
-        BoundingBox placa = detectorPlacas.obtenerMejorPlaca(salida);
+        List<TrackedPlate> placas = procesadorPlacas.procesarFrame(
+                frameOriginal,
+                anchoPreview,
+                altoPreview
+        );
 
-        // 3. recortamos la placa
-        if (placa == null){
-            Toast.makeText(this, "No se detecto la placa", Toast.LENGTH_LONG).show();
-            Log.d("DEBUG_FLUJO", "placa NO detectada");
+        if(placas == null || placas.isEmpty()){
+            olBoundingBox.limpiar();
             return;
         }
 
-        Bitmap bitmapPlaca = detectorPlacas.recortarPlaca(frameOriginal, placa);
-        ivPlaca.setImageBitmap(bitmapPlaca);
-
-        // 4. pre procesamiento pcr
-        Bitmap placaOCR = bitmapPlaca;
-        placaOCR = ImageUtils.escalar(placaOCR, 300);
-        placaOCR = ImageUtils.color2gray(placaOCR);
-
-        // 5. OCR
-        ocrHelper.reconocerTexto(
-                placaOCR,
-                new OCRHelper.ResultadoOCR() {
-                    @Override
-                    public void onResultado(List<String> posiblesPlacas) {
-                        if(posiblesPlacas == null || posiblesPlacas.isEmpty()){
-                            // ocr no encontro texto
-                            etPlaca.setText("");
-                            etPlaca.setHint("No se pudo reconocer la placa");
-                            return;
-                        }
-                        // verificar las lineas devueltas
-                        String cadenaFinal = null;
-                        for(String linea : posiblesPlacas){
-                            String texto = linea.replaceAll("\\s", "").toUpperCase(); // limpiamos espacios y saltos
-
-                            // ignorar palabras como BOLIVIA
-                            if (texto.contains("BOLIVIA") || texto.contains("BOL") || texto.contains("VIA")) continue;
-
-                            // validar longitu tipica de placa
-                            if (texto.length() >= 6 && texto.length() <= 7){
-                                // validar que tenga letras y numeros
-                                if (texto.matches("(?=.*[A-Z])(?=.*\\d)[A-Z0-9]+")) {
-                                    cadenaFinal = texto;
-                                    break;
-                                }
-                            }
-                        }
-                        if(cadenaFinal != null){
-                            cadenaFinal = NormalizarPlaca.normalizar(cadenaFinal);
-                            etPlaca.setText(cadenaFinal);
-                            Log.d("DEBUG_FLUJO", "placa detectada: " + cadenaFinal);
-                        }
-                        else{
-                            etPlaca.setText("");
-
-                        }
-                    }
-
-                    @Override
-                    public void onError(Exception error) {
-                        Log.e("OCR", "Error OCR", error);
-                    }
-                });
-
+        olBoundingBox.actualizarPlacas(placas);
     }
+
 }

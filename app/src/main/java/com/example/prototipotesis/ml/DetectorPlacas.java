@@ -1,15 +1,14 @@
 package com.example.prototipotesis.ml;
-import static com.example.prototipotesis.utils.ImageUtils.convertirABitmapEditable;
 
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
+
+import com.example.prototipotesis.utils.ImageUtils;
 
 import org.tensorflow.lite.Interpreter;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.List;
 
 /*
 * la clase recibe una imagen (bitmap)
@@ -40,7 +39,7 @@ public class DetectorPlacas {
         );
 
         // 2. convertir Bitmap a ByteBuffer
-        ByteBuffer entradaModelo = bitmap2bytebuffer(imagenResize);
+        ByteBuffer entradaModelo = ImageUtils.bitmap2bytebuffer(imagenResize, TAMANIO_ENTRADA, CANALES_COLOR);
 
         // 3. crear estructura de salida
         /*
@@ -59,58 +58,8 @@ public class DetectorPlacas {
     /*
     * preprocesamiento de la imagen: redimensiona, normaliza pixeles y convierte a byteBuffer
     * */
-
-    private ByteBuffer bitmap2bytebuffer(Bitmap bitmapOriginal){
-        // conversion degura del bitmap
-        Bitmap bitmapSeguro = convertirABitmapEditable(bitmapOriginal);
-
-        // 4 bits por float
-        int bytesPorCanal = 4;
-
-        // tamanio total del buffer
-        ByteBuffer buffer = ByteBuffer.allocateDirect(
-                TAMANIO_ENTRADA * TAMANIO_ENTRADA * CANALES_COLOR * bytesPorCanal
-        );
-
-        // usar el orden de bytes nativo del dispositivo
-        buffer.order(ByteOrder.nativeOrder());
-
-        // obtener los pixeles de la imagen en un array
-        int[] pixeles = new int[TAMANIO_ENTRADA * TAMANIO_ENTRADA];
-        bitmapSeguro.getPixels(
-                pixeles,
-                0,
-                bitmapSeguro.getWidth(),
-                0,
-                0,
-                bitmapSeguro.getWidth(),
-                bitmapSeguro.getHeight()
-        );
-
-        int indicePixel = 0;
-
-        // recorrer cada pixel y normalizarlo
-        for(int fila = 0; fila < TAMANIO_ENTRADA; fila++){
-            for(int columna = 0; columna < TAMANIO_ENTRADA; columna++){
-                int pixel = pixeles[indicePixel++];
-
-                // extraer componentes RGB y normalizar (0-1)
-                float rojo = ((pixel >> 16) & 0xFF) / 255.0f;
-                float verde = ((pixel >> 8) & 0xFF) / 255.0f;
-                float azul = (pixel & 0xFF) / 255.0f;
-
-                buffer.putFloat(rojo);
-                buffer.putFloat(verde);
-                buffer.putFloat(azul);
-            }
-        }
-
-        return buffer;
-    }
-
-    public BoundingBox obtenerMejorPlaca(float [][][] salidaModelo){
-        BoundingBox mejorCaja = null;
-        float mejorConfianza = 0f;
+    public List<BoundingBox> obtenerPlacas(float [][][] salidaModelo){
+        List<BoundingBox> cajas = new ArrayList<>();
 
         for (int i = 0; i < 18900 ; i++){
             float centroX = salidaModelo[0][0][i];
@@ -119,16 +68,14 @@ public class DetectorPlacas {
             float alto = salidaModelo[0][3][i];
             float conf = salidaModelo[0][4][i];
 
-            if (conf > 0.1f && conf > mejorConfianza){
-                mejorConfianza = conf;
-                mejorCaja = new BoundingBox(
+            if (conf > 0.65f){
+                cajas.add(new BoundingBox(
                         centroX, centroY, ancho, alto, conf
-                );
+                ));
             }
-
         }
 
-        return mejorCaja;
+        return cajas;
     }
 
     public Bitmap recortarPlaca(Bitmap imagenOriginal, BoundingBox caja){
@@ -150,43 +97,6 @@ public class DetectorPlacas {
         return Bitmap.createBitmap(
                 imagenOriginal, xMin, yMin, anchoFinal, altoFinal
         );
-    }
-
-    // dibujamos una bounding box sobre la imagen para ver que la deteccion es correcta
-    public Bitmap dibujarCaja(Bitmap imagenOriginal, BoundingBox caja){
-        // creamos una copia alterable del bitmap
-        Bitmap copiaImagen = imagenOriginal.copy(
-                Bitmap.Config.ARGB_8888,
-                true
-        );
-
-        Canvas lienzo = new Canvas(copiaImagen);
-        Paint pintura = new Paint();
-        pintura.setColor(Color.RED); // color del borde
-        pintura.setStyle(Paint.Style.STROKE); // solo contorno
-        pintura.setStrokeWidth(5); // grosor de la linea
-
-        int anchoImagen = imagenOriginal.getWidth();
-        int altoImagen = imagenOriginal.getHeight();
-
-        // convertir coordenadas normalizadas  a pixeles
-        float centroX = caja.centroX * anchoImagen;
-        float centroY = caja.centroY * altoImagen;
-        float ancho = caja.ancho * anchoImagen;
-        float alto = caja.alto * altoImagen;
-
-        float izquierda = centroX - ancho/2;
-        float arriba = centroY - alto/2;
-        float derecha = centroX + ancho/2;
-        float abajo = centroY + alto/2;
-
-        // dibujamos el rectangulo
-        lienzo.drawRect(
-                izquierda, arriba, derecha, abajo, pintura
-        );
-
-        return copiaImagen;
-
     }
 
 }
