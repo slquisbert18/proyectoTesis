@@ -2,6 +2,8 @@ package com.example.prototipotesis.ml;
 
 import android.graphics.RectF;
 
+import com.example.prototipotesis.trackedObject.TrackedPlate;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -11,7 +13,7 @@ public class PlateTracker {
     private List<TrackedPlate> placasActivas = new ArrayList<>();
     private int siguienteId = 1;
     private static final float UMBRAL_IOU = 0.3f;
-    private static final int MAX_FRAMES_SIN_DETECTAR = 0;
+    private static final int MAX_FRAMES_SIN_DETECTAR = 5;
     public List<TrackedPlate> actualizar(
             List<RectF> nuevasCajasPreview,
             List<BoundingBox> nuevasCajasModelo

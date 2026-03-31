@@ -20,33 +20,33 @@ import android.util.Log;
 import android.widget.Button;
 import android.widget.Toast;
 import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.Tensor;
 
 import com.example.prototipotesis.camara.AnalizadorFrames;
 import com.example.prototipotesis.camara.GestorCamara;
 import com.example.prototipotesis.processors.PlateProcessor;
 import com.example.prototipotesis.ml.TFLiteHelper;
-import com.example.prototipotesis.ml.TrackedPlate;
 import com.example.prototipotesis.processors.VehicleProcessor;
+import com.example.prototipotesis.trackedObject.TrackedPlate;
+import com.example.prototipotesis.detectors.VehicleDetector;
+import com.example.prototipotesis.trackedObject.TrackedVehicle;
 import com.example.prototipotesis.utils.BoundingBoxOverlay;
 import com.example.prototipotesis.utils.ImageUtils;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private TFLiteHelper vehicleHelper;
     private TFLiteHelper plateHelper;
-    private Interpreter vehiculeInterpreter;
+    private Interpreter vehicleInterpreter;
     private Interpreter plateInterpreter;
     //*************************************************
     private GestorCamara gestorCamara;
     //*************************************************
     private PreviewView previewCamara;
-    private PlateProcessor procesadorPlacas;
-    private VehicleProcessor vehiculoProcessor;
+    private PlateProcessor plateProcessor;
+    private VehicleProcessor vehicleProcessor;
 
     // capa donde se dibujaran las cajas sobre las detecciones
     private BoundingBoxOverlay olBoundingBox;
@@ -94,12 +94,6 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             // iniciamos los helpers
-            // modelo VEHICULOS
-            vehicleHelper = new TFLiteHelper(
-                    this, "modelos/yoloDetector.tflite"
-            );
-            vehiculeInterpreter = vehicleHelper.getInterprete();
-            vehiculoProcessor = new VehicleProcessor(vehiculeInterpreter);
 
             // modelo PLACAS
             plateHelper = new TFLiteHelper(
@@ -107,7 +101,14 @@ public class MainActivity extends AppCompatActivity {
                     "modelos/best_placas16.tflite"
             );
             plateInterpreter = plateHelper.getInterprete();
-            procesadorPlacas = new PlateProcessor(plateInterpreter);
+            plateProcessor = new PlateProcessor(plateInterpreter);
+
+            // modelo VEHICULOS
+            vehicleHelper = new TFLiteHelper(
+                    this, "modelos/yoloDetector.tflite"
+            );
+            vehicleInterpreter = vehicleHelper.getInterprete();
+            vehicleProcessor = new VehicleProcessor(vehicleInterpreter, plateProcessor);
 
             // 2. Iniciar la camara
 
@@ -120,13 +121,14 @@ public class MainActivity extends AppCompatActivity {
                 AnalizadorFrames analizadorFrames =
                         new AnalizadorFrames(
                                 this,
-                                procesadorPlacas,
-                                placas -> {
-                                    if (placas != null){
-                                        olBoundingBox.actualizarPlacas(placas);
-                                        Log.d("OVERLAY", "Placas recibidas: "+ placas.size());
+                                vehicleProcessor,
+                                vehicles -> {
+                                    if (vehicles != null){
+                                        olBoundingBox.updateVehicles(vehicles);
+                                        Log.d("OVERLAY", "Vehiculos recibidas: "+ vehicles.size());
                                     }
                                     else{
+                                        vehicleProcessor.resetTracker();
                                         olBoundingBox.limpiar();
                                     }
                                 },
@@ -256,18 +258,18 @@ public class MainActivity extends AppCompatActivity {
         int anchoPreview = previewCamara.getWidth();
         int altoPreview = previewCamara.getHeight();
 
-        List<TrackedPlate> placas = procesadorPlacas.procesarFrame(
+        List<TrackedVehicle> vehicles = vehicleProcessor.processFrame(
                 frameOriginal,
                 anchoPreview,
                 altoPreview
         );
 
-        if(placas == null || placas.isEmpty()){
+        if(vehicles == null || vehicles.isEmpty()){
             olBoundingBox.limpiar();
             return;
         }
 
-        olBoundingBox.actualizarPlacas(placas);
+        olBoundingBox.updateVehicles(vehicles);
     }
 
 }

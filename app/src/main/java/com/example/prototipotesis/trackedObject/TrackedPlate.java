@@ -1,6 +1,8 @@
-package com.example.prototipotesis.ml;
+package com.example.prototipotesis.trackedObject;
 
 import android.graphics.RectF;
+
+import com.example.prototipotesis.ml.BoundingBox;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -10,7 +12,7 @@ public class TrackedPlate {
     public BoundingBox cajaModelo; // caja original
     public RectF caja;
     public int framesSinDetectar = 0;
-    public String texto = "";
+    public String text = "";
     public boolean ocrEnProceso = false;
     public int framesDesdeUltimoOcr = 0;
 

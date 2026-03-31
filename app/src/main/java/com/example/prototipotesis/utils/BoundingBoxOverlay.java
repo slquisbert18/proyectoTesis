@@ -5,11 +5,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
+import android.graphics.RectF;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.View;
 
-import com.example.prototipotesis.ml.TrackedPlate;
+import com.example.prototipotesis.trackedObject.TrackedPlate;
+import com.example.prototipotesis.trackedObject.TrackedVehicle;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,8 +20,13 @@ public class BoundingBoxOverlay extends View {
     private Paint pinturaCaja;
     private Paint pinturaTexto;
 
+    // *********************** PLACAS *****************************
     // lista de placas trackeadas
-    private List<TrackedPlate> placas = new ArrayList<>();
+    private List<TrackedVehicle> vehicles = new ArrayList<>();
+
+    // ****************** ZONA DE INFRACCION **********************
+    private RectF infringmentZone = new RectF(300, 800, 900, 1000);
+    private Paint zonePaint;
 
     public BoundingBoxOverlay(Context contexto, AttributeSet atributos) {
         super(contexto, atributos);
@@ -38,17 +44,22 @@ public class BoundingBoxOverlay extends View {
 
         pinturaTexto = new Paint();
         pinturaTexto.setColor(Color.GREEN);
-        pinturaTexto.setTextSize(60f);
+        pinturaTexto.setTextSize(50f);
         pinturaTexto.setStyle(Paint.Style.FILL);
         pinturaTexto.setFakeBoldText(true);
+
+        zonePaint = new Paint();
+        zonePaint.setColor(Color.RED);
+        zonePaint.setStyle(Paint.Style.STROKE);
+        zonePaint.setStrokeWidth(6f);
     }
 
     // actualizar lista de placas
-    public void actualizarPlacas(List<TrackedPlate> nuevasPlacas) {
-        if (nuevasPlacas != null) {
-            this.placas = nuevasPlacas;
+    public void updateVehicles(List<TrackedVehicle> newVehicles) {
+        if (newVehicles != null) {
+            this.vehicles = newVehicles;
         } else {
-            this.placas = new ArrayList<>();
+            this.vehicles = new ArrayList<>();
         }
         invalidate();
     }
@@ -59,7 +70,7 @@ public class BoundingBoxOverlay extends View {
     }
 
     public void limpiar(){
-        this.placas = new ArrayList<>();
+        this.vehicles = new ArrayList<>();
         invalidate();
     }
 
@@ -67,29 +78,52 @@ public class BoundingBoxOverlay extends View {
     protected void onDraw(Canvas canvas) {
         //limpiamos el canvas antes de dibujar
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-
         super.onDraw(canvas);
 
-        if (placas == null || placas.isEmpty()) return;
+        // dibujamos zona de infraccion
+        canvas.drawRect(infringmentZone, zonePaint);
 
-        for (TrackedPlate placa : placas) {
+        if (vehicles == null || vehicles.isEmpty()) return;
+
+        for (TrackedVehicle vehicle : vehicles) {
 
             // dibujar rectangulo
-            canvas.drawRect(placa.caja, pinturaCaja);
+            canvas.drawRect(vehicle.box, pinturaCaja);
 
-            // obtener texto del OCR estabilizado
-            String texto = placa.texto;
+            // posiciones base
+            float x = vehicle.box.left;
+            float y = vehicle.box.top - 10;
 
-            if (texto != null && !texto.isEmpty()) {
+            // evitamos que se salga de pantalla
+            if (y < 60) {
+                y = vehicle.box.bottom + 60;
+            }
 
-                float posicionX = placa.caja.left;
-                float posicionY = placa.caja.top - 15;
+            // texto 1: id del vehiculo
+            String text = "ID: " + vehicle.idVehicle;
+            canvas.drawText(text, x, y, pinturaTexto);
 
-                if (posicionY < 60) {
-                    posicionY = placa.caja.bottom + 60;
-                }
+            // dibujar el texto de la placa
+            if(vehicle.plateText != null && !vehicle.plateText.isEmpty()){
+                text += "-" + vehicle.plateText;
+            }
 
-                canvas.drawText(texto, posicionX, posicionY, pinturaTexto);
+            if(vehicle.detectedInfringment){
+                text += " INFRINGE";
+            }
+
+            canvas.drawText(
+                    vehicle.plateText,
+                    x,
+                    y + 60,
+                    pinturaTexto);
+
+            // cambiar de color la zona cuando haya infraccion
+            if(vehicle.detectedInfringment){
+                pinturaCaja.setColor(Color.RED);
+            }
+            else{
+                pinturaCaja.setColor(Color.GREEN);
             }
         }
     }

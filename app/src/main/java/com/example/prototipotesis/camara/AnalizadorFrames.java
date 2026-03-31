@@ -2,6 +2,7 @@ package com.example.prototipotesis.camara;
 
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.graphics.RectF;
 import android.media.Image;
 import android.util.Log;
 import android.content.Context;
@@ -12,8 +13,13 @@ import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 
+import com.example.prototipotesis.detectors.VehicleDetector;
+import com.example.prototipotesis.ml.BoundingBox;
+import com.example.prototipotesis.ml.VehicleTracker;
 import com.example.prototipotesis.processors.PlateProcessor;
-import com.example.prototipotesis.ml.TrackedPlate;
+import com.example.prototipotesis.processors.VehicleProcessor;
+import com.example.prototipotesis.trackedObject.TrackedPlate;
+import com.example.prototipotesis.trackedObject.TrackedVehicle;
 import com.example.prototipotesis.utils.yuv2rgb;
 import java.util.List;
 
@@ -21,7 +27,7 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
     //**************************************************
     // fragmento para recibir el PreviewView del MainActivity
     public interface EscucharDeteccion{
-        void alDetectarRectangulo(List<TrackedPlate> placas);
+        void alDetectarRectangulo(List<TrackedVehicle> vehicles);
     }
     private EscucharDeteccion escuchador;
     //**************************************************
@@ -30,24 +36,24 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
     private int altoPreview;
     private yuv2rgb conversor;
 
-    // nueva clase central
-    private PlateProcessor procesadorPlacas;
+    private VehicleProcessor vehicleProcessor;
 
     // limitamos los fps para no saturar CPU
     private long ultimoTiempoProcesado = 0;
     private static final long INTERVALO_PROCESAMIENTO = 30; //ms (30=33 fps aprox)
     public AnalizadorFrames(
             Context context,
-            PlateProcessor procesadorPlacas,
+            VehicleProcessor vehicleProcessor,
             EscucharDeteccion escuchador,
             int anchoPreview,
             int altoPreview
     ){
         conversor = new yuv2rgb(context);
-        this.procesadorPlacas = procesadorPlacas;
+        this.vehicleProcessor = vehicleProcessor;
         this.escuchador = escuchador;
         this.anchoPreview = anchoPreview;
         this.altoPreview = altoPreview;
+
     }
 
     @ExperimentalGetImage
@@ -101,12 +107,17 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
                     true
             );
 
-            // enviamos el frame al procesador central
-            List<TrackedPlate> placas = procesadorPlacas.procesarFrame(bitmapRotado, anchoPreview, altoPreview);
+            // procesamiento de vehiculos
+            List<TrackedVehicle> vehicles =
+                    vehicleProcessor.processFrame(
+                            bitmapRotado,
+                            anchoPreview,
+                            altoPreview
+            );
 
             // enviamos los resultados al mainActivity
             if(escuchador != null){
-                escuchador.alDetectarRectangulo(placas);
+                escuchador.alDetectarRectangulo(vehicles);
             }
 
         } catch (Exception e) {

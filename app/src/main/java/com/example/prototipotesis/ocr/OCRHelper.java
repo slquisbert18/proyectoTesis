@@ -9,6 +9,9 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import java.util.ArrayList;
 import java.util.List;
 public class OCRHelper {
+    public interface SimpleResult{
+        void onDetectedText(String texto);
+    }
     /*
     procesa una imagen y devuelve lista de posibles textos detectados
     * */

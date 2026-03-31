@@ -8,118 +8,104 @@ import java.util.List;
 import org.tensorflow.lite.Interpreter;
 
 import com.example.prototipotesis.ml.BoundingBox;
-import com.example.prototipotesis.ml.DetectorPlacas;
-import com.example.prototipotesis.ml.PlateTracker;
-import com.example.prototipotesis.ml.TrackedPlate;
+import com.example.prototipotesis.detectors.PlateDetector;
 import com.example.prototipotesis.ocr.NormalizarPlaca;
 import com.example.prototipotesis.ocr.OCRHelper;
-import com.example.prototipotesis.ocr.OCRStabilizer;
 import com.example.prototipotesis.utils.ImageUtils;
 
 public class PlateProcessor {
-    private DetectorPlacas detectorPlacas;
+    private PlateDetector plateDetector;
     private OCRHelper ocrHelper;
-    private PlateTracker tracker;
 
     public PlateProcessor(Interpreter interprete){
-        detectorPlacas = new DetectorPlacas(interprete);
+        plateDetector = new PlateDetector(interprete);
         ocrHelper = new OCRHelper();
-        tracker = new PlateTracker();
     }
 
-    public List<TrackedPlate> procesarFrame(
-            Bitmap bitmapOriginal,
-            int anchoPreview,
-            int altoPreview
+    public void detectPlateTextAsync(
+            Bitmap originalBitmap,
+            OCRHelper.SimpleResult callback
     ){
-        Log.d("PROCESADOR_PLACAS", "ProcesarFrame ejecutado");
-        float[][][] salida =
-                detectorPlacas.detectarPlacas(bitmapOriginal);
+        float[][][] output =
+                plateDetector.detectarPlacas(originalBitmap);
 
-        List<BoundingBox> cajas = detectorPlacas.obtenerPlacas(salida);
-        Log.d("DETECCION", "Cajas detectadas: " + cajas.size());
+        List<BoundingBox> boxes =
+                plateDetector.obtenerPlacas(output);
 
-        if(cajas == null || cajas.isEmpty()){
-            return new ArrayList<>();
-        }
-        List<RectF> recangulosPreview = new ArrayList<>();
-        List<BoundingBox> cajasModelo = new ArrayList<>();
-
-        // cpnvertomos cajas a coordenadas del preview
-        for(BoundingBox caja : cajas){
-            RectF rectanguloPreview = convertirCoordenadasAPreview(
-                    caja,
-                    bitmapOriginal.getWidth(),
-                    bitmapOriginal.getHeight(),
-                    anchoPreview,
-                    altoPreview
-            );
-            recangulosPreview.add(rectanguloPreview);
-            cajasModelo.add(caja);
+        if(boxes == null || boxes.isEmpty()){
+            Log.d("OCR_DEBUG", "No se detectaron placas");
+            callback.onDetectedText("");
+            return;
         }
 
-        // tracking
-        List<TrackedPlate> placasTrackeadas = tracker.actualizar(recangulosPreview, cajasModelo);
+        Log.d("PLACA_DEBUG", "Placas detectadas en vehiculo:" + boxes.size());
 
-        // OCR solo para placas sin texto
-        for(TrackedPlate placaTrackeada : placasTrackeadas){
-            placaTrackeada.framesDesdeUltimoOcr++;
-                                          // solo ejecutar ocr cada 10 frames
-            if(!placaTrackeada.ocrEnProceso && placaTrackeada.framesDesdeUltimoOcr > 10){
-                placaTrackeada.ocrEnProceso = true;
-                // como ya pasaron 10 frames, reiniciamos el contador
-                placaTrackeada.framesDesdeUltimoOcr = 0;
+        BoundingBox bestBox = null;
+        float bestScore = 0f;
 
-                BoundingBox cajaModelo = placaTrackeada.cajaModelo;
-
-                Bitmap placaRecortada = detectorPlacas.recortarPlaca(bitmapOriginal, cajaModelo);
-
-                Bitmap placaOCR = ImageUtils.color2gray(
-                        ImageUtils.escalar(placaRecortada, 300)
-                );
-                ocrHelper.reconocerTexto(
-                        placaOCR,
-                        new OCRHelper.ResultadoOCR() {
-                            @Override
-                            public void onResultado(List<String> posiblesPlacas) {
-                                if (!posiblesPlacas.isEmpty()){
-                                    String textoNormalizado =
-                                            NormalizarPlaca.normalizar(posiblesPlacas.get(0));
-                                    Log.d("TEXTO_EXTRAIDO", textoNormalizado);
-
-                                    // enviamos el texto al overlay
-                                    if(textoNormalizado != null) {
-                                        //placaTrackeada.texto = textoNormalizado;
-                                        // agregar nuevo resultado al historial
-                                        placaTrackeada.historialOCR.add(textoNormalizado);
-
-                                        // limitar tamanio del historial
-                                        if(placaTrackeada.historialOCR.size() > TrackedPlate.MAX_HISTORIAL_OCR){
-                                            placaTrackeada.historialOCR.remove(0);
-                                        }
-
-                                        // obtener el texto mas frecuente
-                                        String stableText = OCRStabilizer.mostFrecuentText(placaTrackeada.historialOCR);
-
-                                        placaTrackeada.texto = stableText;
-                                    }
-                                }
-
-                                placaTrackeada.ocrEnProceso = false;
-                            }
-
-                            @Override
-                            public void onError(Exception error) {
-                                placaTrackeada.ocrEnProceso = false;
-                                Log.e("OCR", "Error OCR", error);
-                            }
-                        });
+        // elegimos la mejor caja
+        for(BoundingBox box : boxes) {
+            // filtramos la deteccion si esta es muy pequenia
+            float area = box.ancho * box.alto;
+            if (area < 0.005f) { // ignoramos cajas muy peques
+                continue;
             }
+
+            // score: priorizamos tamanio + confianza
+            float score = box.confianza * area;
+            if (score > bestScore) {
+                bestScore = score;
+                bestBox = box;
         }
-        return placasTrackeadas;
+
+        // si no hay una caja valida, salimos
+        if(bestBox == null){
+            Log.d("PLACA_DEBUG", "No hay caja válida");
+            callback.onDetectedText("");
+            return;
+        }
+
+        Bitmap croppedPlate = plateDetector.recortarPlaca(
+                originalBitmap,
+                bestBox
+        );
+
+        Bitmap ocrPlate = ImageUtils.color2gray(
+                ImageUtils.escalar(croppedPlate, 300)
+        );
+
+        ocrHelper.reconocerTexto(
+                ocrPlate,
+                new OCRHelper.ResultadoOCR() {
+                    @Override
+                    public void onResultado(List<String> plateCandidates) {
+                        Log.d("DETECCION", "Cajas detectadas: " + boxes.size());
+                        if(plateCandidates == null || plateCandidates.isEmpty()){
+                            return;
+                        }
+                        String bestText = "";
+
+                        for(String candidate : plateCandidates){
+                            String clean = NormalizarPlaca.normalizar(candidate);
+                            Log.d("OCR_DEBUG", "Raw: " + candidate + " -> " + clean);
+                            if(clean != null && clean.length() >= 3){
+                                bestText = clean;
+                                break;
+                            }
+                        }
+                        callback.onDetectedText(bestText);
+                    }
+
+                    @Override
+                    public void onError(Exception error) {
+                        Log.e("OCR", "Error OCR", error);
+                        callback.onDetectedText("");
+                    }
+                });
+        }
     }
 
-    private RectF convertirCoordenadasAPreview(
+    private RectF coordenates2preview(
             BoundingBox caja,
             int anchoOriginal,
             int altoOriginal,

@@ -7,7 +7,6 @@ import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.pm.PackageManager;
 
 import androidx.annotation.NonNull;
@@ -15,10 +14,7 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import com.example.prototipotesis.ml.DetectorPlacas;
 import com.google.common.util.concurrent.ListenableFuture;
-
-import org.tensorflow.lite.Interpreter;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;

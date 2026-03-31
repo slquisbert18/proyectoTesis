@@ -1,7 +1,8 @@
-package com.example.prototipotesis.ml;
+package com.example.prototipotesis.detectors;
 
 import android.graphics.Bitmap;
 
+import com.example.prototipotesis.ml.BoundingBox;
 import com.example.prototipotesis.utils.ImageUtils;
 
 import org.tensorflow.lite.Interpreter;
@@ -17,15 +18,16 @@ import java.util.List;
 * devuelve los resultados del modelo
 * */
 
-public class DetectorPlacas {
+public class PlateDetector {
     private Interpreter interprete;
 
     // tamanio esperado de la imagen de entrada del modelo
     private static final int TAMANIO_ENTRADA = 960;
     // cantidad de canales de color (RGB=3)
     private static final int CANALES_COLOR = 3;
+    private static final float CONF_THRESOLD = 0.55f;
 
-    public DetectorPlacas(Interpreter interprete){
+    public PlateDetector(Interpreter interprete){
         this.interprete = interprete;
     }
 
@@ -68,7 +70,7 @@ public class DetectorPlacas {
             float alto = salidaModelo[0][3][i];
             float conf = salidaModelo[0][4][i];
 
-            if (conf > 0.65f){
+            if (conf > CONF_THRESOLD){
                 cajas.add(new BoundingBox(
                         centroX, centroY, ancho, alto, conf
                 ));

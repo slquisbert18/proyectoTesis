@@ -1,122 +1,271 @@
 package com.example.prototipotesis.processors;
-
 import android.graphics.Bitmap;
 
+import com.example.prototipotesis.detectors.VehicleDetector;
 import com.example.prototipotesis.ml.BoundingBox;
-import com.example.prototipotesis.utils.ImageUtils;
+import com.example.prototipotesis.ml.VehicleTracker;
+import com.example.prototipotesis.ocr.OCRStabilizer;
+import com.example.prototipotesis.trackedObject.TrackedPlate;
+import com.example.prototipotesis.trackedObject.TrackedVehicle;
 
 import org.tensorflow.lite.Interpreter;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.graphics.RectF;
+import android.util.Log;
+
 public class VehicleProcessor {
-    private Interpreter interpreter;
-    private static final int INPUT_SIZE = 320;
-    private static final int COLOR_CHANNELS = 3;
-    private static final float CONF_THRESOLD = 0.4f;
-    public VehicleProcessor(Interpreter interpreter){
-        this.interpreter = interpreter;
+    private VehicleDetector detector;
+    private VehicleTracker tracker;
+    private PlateProcessor plateProcessor;
+    private static final float NMS_THRESOLD = 0.5f;
+    private int framesWithoutVehicles = 0;
+
+    // **************** LOGICA DE CRUCE ***********************
+    private RectF infractionZone = new RectF(300, 800, 900, 1000);
+
+    public VehicleProcessor(
+            Interpreter interpreter,
+            PlateProcessor plateProcessor){
+        this.detector = new VehicleDetector(interpreter);
+        this.plateProcessor = plateProcessor;
+        tracker = new VehicleTracker();
     }
 
-    public float[][][] detectVehicles(Bitmap bitmap){
-        Bitmap resized = Bitmap.createScaledBitmap(
-                bitmap,
-                INPUT_SIZE,
-                INPUT_SIZE,
-                true
-        );
+    public List<TrackedVehicle> processFrame(
+            Bitmap originalBitmap,
+            int previewWidth,
+            int previewHeight
+    ){
+        Log.d("VEHICLE_PROCESSOR", "Procesando frame");
 
-        // convertimos bitmap a byteBuffer
-        ByteBuffer input = ImageUtils.bitmap2bytebuffer(resized, INPUT_SIZE, COLOR_CHANNELS);
+        float [][][] output = detector.detectVehicles(originalBitmap);
 
-        //salida tipica de YOLO: [1][cantidadDetecciones][atributos]
-        float[][][] output = new float[1][6300][85];
-        // 6300: numero de detecciones
-        // 85 = (x, y, w, z, confianza, clases [en este caso tenemos 1 clase])
+        List<BoundingBox> boxes = detector.getVehicles(output);
 
-        // ejecutar inferencia
-        interpreter.run(input, output);
+        if(boxes == null || boxes.isEmpty()){
+            framesWithoutVehicles++;
 
-        return output;
-    }
+            if(framesWithoutVehicles > 5){
+                tracker.reset();
+            }
+            return new ArrayList<>();
+        }
+        else{
+            framesWithoutVehicles = 0;
+        }
 
-    public List<BoundingBox> getVehicles(float [][][] output){
-        List<BoundingBox> cajas = new ArrayList<>();
+        // aplicamos NonMaximumSuppression para que el modelo se quede con
+        // la mejor caja (una sola)
+        boxes = nonMaxmimumSuppression(boxes);
 
-        for (int i = 0; i < 6300 ; i++){
-            float objectConfidence = output[0][i][4];
+        if(boxes.size() == 0){
+            tracker.reset(); // reinicia todo si no hay vehiculos
+        }
 
-            // si la probabilidad de existencia de un objeto
-            // es menor al umbral de confianza, se descarta
-            if(objectConfidence > CONF_THRESOLD){
-                continue;
+        List<RectF> previewBoxes = new ArrayList<>();
+        List<BoundingBox> modelBoxes = new ArrayList<>();
+
+        for(BoundingBox box : boxes){
+            RectF previewRect = coordinates2preview(
+                    box,
+                    originalBitmap.getWidth(),
+                    originalBitmap.getHeight(),
+                    previewWidth,
+                    previewHeight
+            );
+
+            previewBoxes.add(previewRect);
+            modelBoxes.add(box);
+        }
+
+        //  tracking
+        List<TrackedVehicle> trackedVehicles = tracker.update(previewBoxes, modelBoxes);
+
+        if(trackedVehicles.isEmpty() && boxes.size() > 0){
+            tracker.reset();
+        }
+
+        // procesar cada vehiculo
+        for(TrackedVehicle vehicle : trackedVehicles){
+            if(vehicle.undetectedFrames > 2){
+                vehicle.ocrInProcess = false; // 🔥 liberar OCR
             }
 
-            int bestClass = -1;
-            float bestScore = 0;
+            vehicle.framesSinceLastOcr++;
 
-            // con este bucle obtenemos el tipo de objeto detectado en la imagen
-            // (necesario para el siguiente filtro)
-            for(int c = 5 ; c < 85 ; c++){
-                float score = output[0][i][c];
+            // control del timeout
+            if(vehicle.ocrInProcess){
+                long time = System.currentTimeMillis() - vehicle.ocrStartTime;
 
-                if (score < bestScore){
-                    bestScore = score;
-                    bestClass = c - 5;
+                if(time > 1500){ // 1.5 segundos
+                    vehicle.ocrInProcess = false;
                 }
             }
 
-            float finalScore = objectConfidence * bestScore;
+            // ejecutaremos el ocr cada 10 frames
+            // si hay vehiculo nuevo, se ejecuta el ocr
+            // si hay un vehiculo con texto, hay ocr cada 10 rames
+            // si el vehiculo no tiene texto, se insiste
+            if(!vehicle.ocrInProcess &&
+                    vehicle.plateText == null ||
+                    vehicle.plateText.isEmpty() ||
+                    vehicle.framesSinceLastOcr > 5) {
 
-            if(finalScore < CONF_THRESOLD){
-                continue;
+                vehicle.ocrInProcess = true;
+                vehicle.ocrStartTime = System.currentTimeMillis();
+                vehicle.framesSinceLastOcr = 0;
+
+                Bitmap croppedVehicle = detector.cutVehicle(
+                        originalBitmap,
+                        vehicle.boxModel
+                );
+
+                vehicle.vehicleBitmap = croppedVehicle;
+
+                // ocr por vehiculo
+                plateProcessor.detectPlateTextAsync(
+                        croppedVehicle,
+                        text -> {
+                            if (text != null) {
+                                // historial
+                                vehicle.plateRecord.add(text);
+
+                                if (vehicle.plateRecord.size() > TrackedVehicle.MAX_OCR_RECORD) {
+                                    vehicle.plateRecord.remove(0);
+                                }
+
+                                // texto estable
+                                String stable = OCRStabilizer.mostFrecuentText(vehicle.plateRecord);
+
+                                vehicle.plateText = stable;
+                            }
+                            Log.d("DEBUG_OCR", "Vehiculo ID: " + vehicle.idVehicle + " Texto: " + text);
+                            // liberar ocr
+                            vehicle.ocrInProcess = false;
+                        }
+                );
+
+                // logica de colision
+                boolean currentIntersection = RectF.intersects(vehicle.box, infractionZone);
+                boolean prevIntersection = false;
+                if(vehicle.prevBox != null) {
+                    prevIntersection = RectF.intersects(vehicle.prevBox, infractionZone);
+                }
+
+                // detectar cruce real
+                if(!prevIntersection && currentIntersection){
+                    vehicle.detectedInfringment = true;
+                }
+
+                // guardamos estado
+                vehicle.inZone = currentIntersection;
+
+                // actualizar la posicion anterior
+                vehicle.prevBox = new RectF(vehicle.box);
             }
-
-            // filtrar solo vehiculos
-            /* MODELO DE DETECCION DE YOLO:
-               - 2: automovil
-               - 3: moto
-               - 5: autobus
-               - 7: camion
-
-             */
-            if(bestClass != 2 && bestClass != 3 && bestClass != 5 && bestClass != 7){
-                continue;
-            }
-
-            float x = output[0][i][0];
-            float y = output[0][i][1];
-            float w = output[0][i][2];
-            float h = output[0][i][3];
-            float conf = objectConfidence;
-
-            cajas.add(
-                    new BoundingBox(x, y, w, h, conf)
-            );
         }
-        return cajas;
+
+        return trackedVehicles;
+    }
+    private List<BoundingBox> nonMaxmimumSuppression(List<BoundingBox> boxes){
+        List<BoundingBox> result = new ArrayList<>();
+
+        // ordenamos por confianza
+        boxes.sort((a, b) -> Float.compare(b.confianza, a.confianza));
+
+        boolean[] removed = new boolean[boxes.size()];
+
+        for(int i = 0 ; i < boxes.size() ; i++){
+            if(removed[i]){
+                continue;
+            }
+            // current = actual
+            BoundingBox current = boxes.get(i);
+            result.add(current);
+
+            for(int j = i + 1 ; j < boxes.size() ; j++){
+                if(removed[j]){
+                    continue;
+                }
+
+                BoundingBox other = boxes.get(j);
+
+                float iou = calculateIOU(current, other);
+
+                if(iou > NMS_THRESOLD){
+                    removed[j] = true;
+                }
+            }
+        }
+        return result;
     }
 
-    public Bitmap cutVehicle(Bitmap imagenOriginal, BoundingBox caja){
-        int anchoImagen = imagenOriginal.getWidth();
-        int altoImagen = imagenOriginal.getHeight();
+    private float calculateIOU(BoundingBox a, BoundingBox b){
+        float ax1 = a.centroX - a.ancho/2;
+        float ay1 = a.centroY - a.alto/2;
+        float ax2 = a.centroX + a.ancho/2;
+        float ay2 = a.centroY + a.alto/2;
 
-        // convertimos valores normalizados en pixeles reales
-        int centroX = (int)(caja.centroX * anchoImagen);
-        int centroY = (int)(caja.centroY * altoImagen);
-        int ancho = (int)(caja.ancho * anchoImagen);
-        int alto = (int)(caja.alto * altoImagen);
+        float bx1 = b.centroX - b.ancho/2;
+        float by1 = b.centroY - b.alto/2;
+        float bx2 = b.centroX + b.ancho/2;
+        float by2 = b.centroY + b.alto/2;
 
-        int xMin = Math.max(0, centroX - (ancho/2));
-        int yMin = Math.max(0, centroY - (alto/2));
+        float interX1 = Math.max(ax1, bx1);
+        float interY1 = Math.max(ay1, by1);
+        float interX2 = Math.min(ax2, bx2);
+        float interY2 = Math.min(ay2, by2);
 
-        int anchoFinal = Math.min(ancho, anchoImagen - xMin);
-        int altoFinal = Math.min(alto, altoImagen - yMin);
+        float interW = Math.max(0, interX2 - interX1);
+        float interH = Math.max(0, interY2 - interY1);
 
-        return Bitmap.createBitmap(
-                imagenOriginal, xMin, yMin, anchoFinal, altoFinal
-        );
+        float areaInter = interW * interH;
+
+        float areaA = (ax2 - ax1) * (ay2 - ay1);
+        float areaB = (bx2 - bx1) * (by2 - by1);
+
+        float areaUnion = areaA + areaB - areaInter;
+
+        if(areaUnion <= 0) return 0f;
+
+        return areaInter / areaUnion;
+    }
+
+    public static RectF coordinates2preview(
+            BoundingBox caja,
+            int anchoOriginal,
+            int altoOriginal,
+            int anchoPreview,
+            int altoPreview
+    ){
+        // coordenadas normalizadas del modelo (0 a 1)
+        float centroX = caja.centroX * anchoOriginal;
+        float centroY = caja.centroY * altoOriginal;
+        float anchoCaja = caja.ancho * anchoOriginal;
+        float altoCaja = caja.alto * altoOriginal;
+
+        // convertimos a coordenadas absolutas del bitmap
+        float izquierda = centroX - (anchoCaja / 2f);
+        float arriba = centroY - (altoCaja / 2f);
+        float derecha = centroX + (anchoCaja / 2f);
+        float abajo = centroY + (altoCaja / 2f);
+
+        // ahora escalamos al tamaño real del PreviewView
+        float escalaX = (float) anchoPreview / (float) anchoOriginal;
+        float escalaY = (float) altoPreview / (float) altoOriginal;
+
+        izquierda *= escalaX;
+        derecha *= escalaX;
+        arriba *= escalaY;
+        abajo *= escalaY;
+
+        return new RectF(izquierda, arriba, derecha, abajo);
+    }
+
+    public void resetTracker(){
+        tracker.reset();
     }
 }
