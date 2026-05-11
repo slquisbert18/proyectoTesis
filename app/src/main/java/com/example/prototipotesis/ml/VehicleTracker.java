@@ -29,7 +29,8 @@ public class VehicleTracker {
 
     private int framesWithoutDetection = 0; // control de frames sin detecciones
 
-    public List<TrackedVehicle> update(
+    // synchronized  evita que dos hilos entren al update al mismo tiempo
+    public synchronized List<TrackedVehicle> update(
             List<RectF> newBoxesPreview,
             List<BoundingBox> newBoxesModel){
 
@@ -49,6 +50,7 @@ public class VehicleTracker {
 
         // prediccion de movimiento
         for(TrackedVehicle vehicle : activeVehicles){
+            if(vehicle == null) continue;
             // clonamos la caja actual
             RectF predicted = new RectF(vehicle.box);
 
@@ -112,6 +114,7 @@ public class VehicleTracker {
                 detectionAssigned[bestJ] = true;
 
                 TrackedVehicle v = activeVehicles.get(bestI);
+                if(v == null) continue;
 
                 RectF newBox = newBoxesPreview.get(bestJ);
                 BoundingBox newModel = newBoxesModel.get(bestJ);
@@ -134,8 +137,10 @@ public class VehicleTracker {
 
         // aumentar frames sin detectar
         for(int i = 0 ; i < n ; i++){
-            if(!vehicleAssigned[i]){
-                activeVehicles.get(i).undetectedFrames++;
+            TrackedVehicle vehicle = activeVehicles.get(i);
+
+            if(vehicle != null){
+                vehicle.undetectedFrames++;
             }
         }
 
@@ -143,7 +148,7 @@ public class VehicleTracker {
         Iterator<TrackedVehicle> iterator = activeVehicles.iterator();
         while(iterator.hasNext()){
             TrackedVehicle vehicle = iterator.next();
-            if(vehicle.undetectedFrames > MAX_UNDETECTED_FRAMES){
+            if(vehicle == null || vehicle.undetectedFrames > MAX_UNDETECTED_FRAMES){
                 iterator.remove();
             }
         }
@@ -152,7 +157,7 @@ public class VehicleTracker {
     }
 
     public void reset(){
-        activeVehicles.clear(); // eliminamos todos los vehiculos
+        activeVehicles = new ArrayList<>(); // eliminamos todos los vehiculos
                                 // para reiniciar los id al cambiar de imagen
         nextId = 1;
         framesWithoutDetection = 0;
@@ -193,5 +198,4 @@ public class VehicleTracker {
 
         return areaInter / areaUnion;
     }
-
 }

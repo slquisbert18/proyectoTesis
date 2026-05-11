@@ -1,8 +1,7 @@
 package com.example.prototipotesis;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.ImageDecoder;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
 
@@ -13,43 +12,82 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.view.PreviewView;
 import androidx.core.graphics.Insets;
+import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.viewpager2.widget.ViewPager2;
 
 import android.util.Log;
-import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.Toast;
-import org.tensorflow.lite.Interpreter;
 
 import com.example.prototipotesis.camara.AnalizadorFrames;
-import com.example.prototipotesis.camara.GestorCamara;
+import com.example.prototipotesis.managers.CamaraManager;
+import com.example.prototipotesis.managers.GaleriaManager;
+import com.example.prototipotesis.processors.CrosswalkProcessor;
+import com.example.prototipotesis.processors.GaleriaProcessor;
 import com.example.prototipotesis.processors.PlateProcessor;
 import com.example.prototipotesis.ml.TFLiteHelper;
 import com.example.prototipotesis.processors.VehicleProcessor;
-import com.example.prototipotesis.trackedObject.TrackedPlate;
-import com.example.prototipotesis.detectors.VehicleDetector;
-import com.example.prototipotesis.trackedObject.TrackedVehicle;
+import com.example.prototipotesis.ui.DialogPreProcesamiento;
+import com.example.prototipotesis.ui.DialogProcesando;
+import com.example.prototipotesis.ui.HistorialPagerAdapter;
 import com.example.prototipotesis.utils.BoundingBoxOverlay;
-import com.example.prototipotesis.utils.ImageUtils;
+import com.example.prototipotesis.managers.CaptureManager;
+import com.example.prototipotesis.utils.InfringmentZoneView;
+import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
 
 import java.io.IOException;
-import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private TFLiteHelper vehicleHelper;
+    private TFLiteHelper vehicleHelperGaleria;
     private TFLiteHelper plateHelper;
-    private Interpreter vehicleInterpreter;
-    private Interpreter plateInterpreter;
+    private TFLiteHelper crosswalkHelper;
     //*************************************************
-    private GestorCamara gestorCamara;
+    private CamaraManager camaraManager;
+    private AnalizadorFrames analizadorFrames;
+    private CaptureManager captureManager;
+    private GaleriaManager galeriaManager;
     //*************************************************
-    private PreviewView previewCamara;
     private PlateProcessor plateProcessor;
     private VehicleProcessor vehicleProcessor;
+    private VehicleProcessor vehicleProcessorGaleria;
+    private CrosswalkProcessor crosswalkProcessor;
+    private GaleriaProcessor galeriaProcessor;
+    private DialogProcesando dialogProcesando;
+
+    // ******************* WIDGETS BASE**********************
+    private FrameLayout main;
+    private PreviewView previewCamara;
 
     // capa donde se dibujaran las cajas sobre las detecciones
     private BoundingBoxOverlay olBoundingBox;
+
+    // zona de infracciones
+    private InfringmentZoneView infringmentZoneView;
+
+    // ********************* botones ************************
+    private ImageButton btnCapture;
+    private ImageButton btnGalery;
+    private ImageButton btnRecord;
+    private ImageButton btnHistorial;
+
+    // ********************* secciones *********************
+    private DrawerLayout drawerLayout;
+    private TabLayout tabLayoutHistorial;
+    private ViewPager2 viewPagerHistorial;
+
+    // variable para guardar el ultimo frame procesado
+    private Bitmap ultimoFrameRenderizado;
+
+    //
+    private final Object frameLock = new Object();
+
 
     // SELECTOR DE IMAGENES DE GALERIA
     private final ActivityResultLauncher<Intent> selectorMedia =
@@ -64,12 +102,22 @@ public class MainActivity extends AppCompatActivity {
 
                             if (tipo == null) return;
 
-                            if (tipo.startsWith("image/")){
-                                procesarImagenDeGaleria(uri);
-                            } else if (tipo.startsWith("video/")) {
-
-                                procesarVideo(uri);
-                            }
+                            boolean esVideo = tipo.startsWith("video/");
+                            DialogPreProcesamiento dialog =
+                                    new DialogPreProcesamiento(
+                                            uri,
+                                            esVideo,
+                                            (uriSeleccionada, video) -> {
+                                                iniciarProcesamiento(
+                                                        uriSeleccionada,
+                                                        video
+                                                );
+                                            }
+                                    );
+                            dialog.show(
+                                    getSupportFragmentManager(),
+                                    "preview"
+                            );
                         }
                     }
             );
@@ -86,78 +134,228 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        // iniciar la camara
+        // inicializamos variables
+        main = findViewById(R.id.main);
         previewCamara = findViewById(R.id.camara);
-
         olBoundingBox = findViewById(R.id.olBoundingBox);
-        Button btnGaleria = findViewById(R.id.btnGaleria);
+        infringmentZoneView = findViewById(R.id.infringmentZone);
+        drawerLayout = findViewById(R.id.drawerLayout);
+        tabLayoutHistorial = findViewById(R.id.tabLayoutHistorial);
+        viewPagerHistorial = findViewById(R.id.viewPagerHistorial);
+
+        btnGalery = findViewById(R.id.btnGaleria);
+        btnCapture = findViewById(R.id.btnCapture);
+        btnRecord = findViewById(R.id.btnRecord);
+        btnHistorial = findViewById(R.id.btnHistorial);
+
+        // inicializamos los manager
+        captureManager = new CaptureManager(this);
+        galeriaManager = new GaleriaManager(selectorMedia);
+        galeriaProcessor = new GaleriaProcessor(this);
+
+        //*********************************************************
+        HistorialPagerAdapter adapter =
+                new HistorialPagerAdapter(this);
+        viewPagerHistorial.setAdapter(adapter);
+
+        new TabLayoutMediator(
+                tabLayoutHistorial,
+                viewPagerHistorial,
+                (tab, position) -> {
+
+                    if(position == 0){
+                        tab.setText("Capturas");
+                    }
+                    else{
+                        tab.setText("Videos");
+                    }
+                }
+        ).attach();
+        //*********************************************************
+
+        // agregamos al boton capture la capacidad de capturar lo que esta en pantalla
+        btnCapture.setOnClickListener(v -> captureManager.capturarImagen());
+        btnRecord.setOnClickListener(v->{
+            if(captureManager.estaGrabando()){
+                btnRecord.setImageResource(R.drawable.grabar);
+                captureManager.detenerGrabacion();
+            }
+            else{
+                btnRecord.setImageResource(R.drawable.parar);
+                captureManager.iniciarGrabacion();
+            }
+        });
+
+        btnGalery.setOnClickListener(v -> galeriaManager.abrirGaleria());
+        btnHistorial.setOnClickListener(v -> {
+            drawerLayout.openDrawer(GravityCompat.END);
+        });
+
+        if (infringmentZoneView == null) {
+            Log.e("ERROR_FATAL", "infringmentZoneView es NULL");
+            return;
+        }
+        if (olBoundingBox == null) {
+            Log.e("ERROR_FATAL", "olBoundingBox es NULL");
+            return;
+        }
+
+        if (previewCamara == null) {
+            Log.e("ERROR_FATAL", "preview es NULL");
+            return;
+        }
+
 
         try {
-            // iniciamos los helpers
-
-            // modelo PLACAS
+            // carga de modelos tflite
             plateHelper = new TFLiteHelper(
                     this,
                     "modelos/best_placas16.tflite"
             );
-            plateInterpreter = plateHelper.getInterprete();
-            plateProcessor = new PlateProcessor(plateInterpreter);
+            plateProcessor = new PlateProcessor(plateHelper.getInterprete());
 
             // modelo VEHICULOS
             vehicleHelper = new TFLiteHelper(
                     this, "modelos/yoloDetector.tflite"
             );
-            vehicleInterpreter = vehicleHelper.getInterprete();
-            vehicleProcessor = new VehicleProcessor(vehicleInterpreter, plateProcessor);
+            vehicleProcessor = new VehicleProcessor(vehicleHelper.getInterprete(), plateProcessor);
 
-            // 2. Iniciar la camara
+            vehicleHelperGaleria = new TFLiteHelper(this, "modelos/yoloDetector.tflite");
+            vehicleProcessorGaleria =
+                    new VehicleProcessor(
+                            vehicleHelperGaleria.getInterprete(),
+                            plateProcessor
+                    );
 
+            // modelo cruces
+            crosswalkHelper = new TFLiteHelper(
+                    this,
+                    "modelos/crosswalkDetector16.tflite"
+            );
+            crosswalkProcessor = new CrosswalkProcessor(crosswalkHelper.getInterprete());
+
+            // configuracion de la camara una vez que el view esta listo
             previewCamara.post(() -> {
-
-                int anchoPreview = previewCamara.getWidth();
-                int altoPreview = previewCamara.getHeight();
-                //Log.d("ANCHO_ALTO", "Ancho: " + anchoPreview + " Alto: " + altoPreview);
-
-                AnalizadorFrames analizadorFrames =
+                this.analizadorFrames =
                         new AnalizadorFrames(
                                 this,
                                 vehicleProcessor,
+                                crosswalkProcessor,
                                 vehicles -> {
-                                    if (vehicles != null){
-                                        olBoundingBox.updateVehicles(vehicles);
-                                        Log.d("OVERLAY", "Vehiculos recibidas: "+ vehicles.size());
-                                    }
-                                    else{
-                                        vehicleProcessor.resetTracker();
-                                        olBoundingBox.limpiar();
+                                    // as actualizaciones de UI (olBoundingBox) deben ir en el hilo principal siempre.
+                                    runOnUiThread(() -> {
+                                        if (vehicles != null) {
+                                            olBoundingBox.updateVehicles(vehicles);
+                                        } else {
+                                            vehicleProcessor.resetTracker();
+                                            olBoundingBox.limpiar();
+                                        }
+                                    });
+                                },
+                                bitmap -> {
+                                    synchronized (frameLock) {
+                                        if (ultimoFrameRenderizado != null &&
+                                                !ultimoFrameRenderizado.isRecycled()) {
+                                            ultimoFrameRenderizado.recycle(); // liberar el anterior
+                                        }
+                                        ultimoFrameRenderizado = bitmap;
+                                        captureManager.actualizarFrame(bitmap);
                                     }
                                 },
-                                anchoPreview,
-                                altoPreview
+                                previewCamara.getWidth(),
+                                previewCamara.getHeight(),
+                                infringmentZoneView
                         );
 
                 // Iniciar la camara
-                gestorCamara = new GestorCamara(
+                camaraManager = new CamaraManager(
                         this,
                         previewCamara,
                         analizadorFrames
                 );
-                gestorCamara.verificarPermisos();
+                camaraManager.verificarPermisos();
             });
 
 
         } catch (IOException error) {
             Toast.makeText(this, "Error cargando el modelo", Toast.LENGTH_LONG).show();
-            // Error al cargar el modelo
             Log.e(
                     "PRUEBA_MODELO",
                     "Error al cargar el modelo TFLite",
                     error
             );
         }
+    }
 
-        btnGaleria.setOnClickListener(v -> abrirGaleria());
+    private void iniciarProcesamiento(
+            Uri uri,
+            boolean esVideo
+    ){
+        dialogProcesando = new DialogProcesando(() -> {
+            galeriaProcessor.cancelarProcesamiento();
+            Toast.makeText(
+                            this,
+                            "Procesamiento cancelado",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                });
 
+        dialogProcesando.show(
+                getSupportFragmentManager(),
+                "procesando"
+        );
+
+        // ================= VIDEO =================
+        if(esVideo){
+            galeriaProcessor.procesarVideo(
+                    uri,
+                    vehicleProcessorGaleria,
+                    previewCamara.getWidth(),
+                    previewCamara.getHeight(),
+                    (bitmap, vehiculos) -> {
+
+                        runOnUiThread(() -> {
+                            if (vehiculos != null && !vehiculos.isEmpty()) {
+                                olBoundingBox.updateVehicles(vehiculos);
+                            } else {
+                                olBoundingBox.limpiar();
+                            }
+                        });
+                    },
+                    () -> {
+                            if(dialogProcesando != null && dialogProcesando.isAdded()){
+                                dialogProcesando.dismissAllowingStateLoss();
+                            }
+                            Toast.makeText(
+                                    this,
+                                    "Video procesado",
+                                    Toast.LENGTH_SHORT
+                            ).show();
+                    }
+            );
+        }
+        // ================= IMAGEN =================
+        else{
+            galeriaProcessor.procesarImagen(
+                    uri,
+                    vehicleProcessor,
+                    previewCamara.getWidth(),
+                    previewCamara.getHeight(),
+                    (bitmap, vehiculos) -> {
+                        runOnUiThread(() -> {
+                            if(vehiculos != null && !vehiculos.isEmpty()){
+                                olBoundingBox.updateVehicles(vehiculos);
+                            }
+                            else{
+                                olBoundingBox.limpiar();
+                            }
+                            if(dialogProcesando != null){
+                                dialogProcesando.dismiss();
+                            }
+                        });
+                    }
+            );
+        }
     }
 
     @Override
@@ -165,111 +363,40 @@ public class MainActivity extends AppCompatActivity {
                                            @NonNull String[] permisos,
                                            @NonNull int[] resultados){
         super.onRequestPermissionsResult(codigo, permisos, resultados);
-        gestorCamara.manejarRespuestaPermiso(codigo, resultados);
+        camaraManager.manejarRespuestaPermiso(codigo, resultados);
     }
 
     @Override
     protected void onDestroy(){
         super.onDestroy();
-        gestorCamara.liberarRecursos();
+        if (camaraManager != null) camaraManager.liberarRecursos();
+
+        // para evitar fugas de memoria al cerrar la app
+        if (ultimoFrameRenderizado != null) {
+            ultimoFrameRenderizado.recycle();
+            ultimoFrameRenderizado = null;
+        }
     }
-    // ABRIR GALERIA
-    private void abrirGaleria(){
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
-                "image/*",
-                "video/*"
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        // esperamos a que el PreviewView se redibuje con nuevas medidas
+        previewCamara.post(() -> {
+            if (camaraManager != null) {
+                // Obtenemos las nuevas dimensiones
+                int nuevoAncho = previewCamara.getWidth();
+                int nuevoAlto = previewCamara.getHeight();
+
+                // Actualizamos el analizador para que los cálculos de coordenadas sean correctos
+                analizadorFrames.actualizarDimensiones(nuevoAncho, nuevoAlto);
+
+                // limpiamos overlay hasta que llegue el proximo frame
+                olBoundingBox.limpiar();
+
+                Log.d("ROTACION", "Nuevas dimensiones: " + nuevoAncho + "x" + nuevoAlto);
+            }
         });
-        selectorMedia.launch(intent);
     }
-
-    // PROCESAR IMAGEN
-    private void procesarImagenDeGaleria(Uri uri){
-        try {
-            Bitmap bitmap;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                // API 28+
-                bitmap = ImageDecoder.decodeBitmap(
-                        ImageDecoder.createSource(getContentResolver(), uri)
-                );
-            } else {
-                // API 26–27
-                bitmap = android.provider.MediaStore.Images.Media.getBitmap(
-                        getContentResolver(),
-                        uri
-                );
-            }
-
-            if (bitmap == null) {
-                Toast.makeText(this, "bitmap nulo", Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            procesarFrame(bitmap);
-
-        } catch (IOException e) {
-            Toast.makeText(this, "Error abriendo imagen", Toast.LENGTH_SHORT).show();
-            Log.e("IMG", "Error decodificando imagen", e);
-        }
-
-    }
-    private void procesarVideo(Uri uri){
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        try {
-            retriever.setDataSource(this, uri);
-
-            long duracionMs = Long.parseLong(
-                    retriever.extractMetadata(
-                            MediaMetadataRetriever.METADATA_KEY_DURATION
-                    )
-            );
-
-            for (long tiempo = 0; tiempo < duracionMs ; tiempo += 200){
-                Bitmap frame = retriever.getFrameAtTime(
-                        tiempo * 1000,
-                        MediaMetadataRetriever.OPTION_CLOSEST
-                );
-
-                if (frame == null) continue;
-                procesarFrame(frame);
-            }
-        }
-        catch (Exception e){
-            Toast.makeText(this, "Error procesando video", Toast.LENGTH_SHORT).show();
-        }
-        finally{
-            try {
-                retriever.release();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
-
-    private void procesarFrame(Bitmap frameOriginal){
-        if(!ImageUtils.bitmapValido(frameOriginal)){
-            Toast.makeText(this, "Imagen invalida", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        frameOriginal = ImageUtils.convertirABitmapEditable(frameOriginal);
-
-        int anchoPreview = previewCamara.getWidth();
-        int altoPreview = previewCamara.getHeight();
-
-        List<TrackedVehicle> vehicles = vehicleProcessor.processFrame(
-                frameOriginal,
-                anchoPreview,
-                altoPreview
-        );
-
-        if(vehicles == null || vehicles.isEmpty()){
-            olBoundingBox.limpiar();
-            return;
-        }
-
-        olBoundingBox.updateVehicles(vehicles);
-    }
-
 }

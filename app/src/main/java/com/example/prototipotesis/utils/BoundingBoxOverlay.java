@@ -1,9 +1,13 @@
 package com.example.prototipotesis.utils;
 
+import static org.tensorflow.lite.TensorFlowLite.init;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PointF;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
 import android.util.AttributeSet;
@@ -25,12 +29,25 @@ public class BoundingBoxOverlay extends View {
     private List<TrackedVehicle> vehicles = new ArrayList<>();
 
     // ****************** ZONA DE INFRACCION **********************
-    private RectF infringmentZone = new RectF(300, 800, 900, 1000);
+    //private RectF infringmentZone = new RectF(300, 800, 900, 1000);
     private Paint zonePaint;
 
-    public BoundingBoxOverlay(Context contexto, AttributeSet atributos) {
-        super(contexto, atributos);
+    public BoundingBoxOverlay(Context context){
+        super(context);
+        init();
+    }
 
+    public BoundingBoxOverlay(Context context, AttributeSet attrs){
+        super(context, attrs);
+        init();
+    }
+
+    public BoundingBoxOverlay(Context context, AttributeSet attrs, int style){
+        super(context, attrs, style);
+        init();
+    }
+
+    private void init(){
         // para que la vista se dibuje correctamente
         setWillNotDraw(false);
 
@@ -81,13 +98,21 @@ public class BoundingBoxOverlay extends View {
         super.onDraw(canvas);
 
         // dibujamos zona de infraccion
-        canvas.drawRect(infringmentZone, zonePaint);
+        //canvas.drawRect(infringmentZone, zonePaint);
 
         if (vehicles == null || vehicles.isEmpty()) return;
 
         for (TrackedVehicle vehicle : vehicles) {
+            // primero definimos el color de la caja
+            if (vehicle.inZone) {
+                pinturaCaja.setColor(Color.YELLOW); // amarillo si esta en zona de infraccion
+            } else if (vehicle.detectedInfringment) {
+                pinturaCaja.setColor(Color.RED); // rojo si cometio la infraccion
+            } else {
+                pinturaCaja.setColor(Color.GREEN); // verde todo posi
+            }
 
-            // dibujar rectangulo
+            // dibujar rectangulo alrededor del vehiculo
             canvas.drawRect(vehicle.box, pinturaCaja);
 
             // posiciones base
@@ -99,32 +124,20 @@ public class BoundingBoxOverlay extends View {
                 y = vehicle.box.bottom + 60;
             }
 
-            // texto 1: id del vehiculo
+            // texto con ID + ocr
             String text = "ID: " + vehicle.idVehicle;
-            canvas.drawText(text, x, y, pinturaTexto);
 
-            // dibujar el texto de la placa
-            if(vehicle.plateText != null && !vehicle.plateText.isEmpty()){
+            // concatenamos si es que tenemos ocr
+            if (vehicle.plateText != null && !vehicle.plateText.isEmpty()) {
                 text += "-" + vehicle.plateText;
             }
 
-            if(vehicle.detectedInfringment){
+            // si tenemos infraccion, concatenamos "INFRACCION" y cambiamos el color de la caja
+            if (vehicle.detectedInfringment) {
                 text += " INFRINGE";
             }
-
-            canvas.drawText(
-                    vehicle.plateText,
-                    x,
-                    y + 60,
-                    pinturaTexto);
-
-            // cambiar de color la zona cuando haya infraccion
-            if(vehicle.detectedInfringment){
-                pinturaCaja.setColor(Color.RED);
-            }
-            else{
-                pinturaCaja.setColor(Color.GREEN);
-            }
+            // mostramos el texto final
+            canvas.drawText(text, x, y, pinturaTexto);
         }
     }
 }

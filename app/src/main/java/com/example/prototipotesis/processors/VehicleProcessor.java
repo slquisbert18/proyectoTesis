@@ -13,6 +13,7 @@ import org.tensorflow.lite.Interpreter;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.graphics.PointF;
 import android.graphics.RectF;
 import android.util.Log;
 
@@ -23,8 +24,8 @@ public class VehicleProcessor {
     private static final float NMS_THRESOLD = 0.5f;
     private int framesWithoutVehicles = 0;
 
-    // **************** LOGICA DE CRUCE ***********************
-    private RectF infractionZone = new RectF(300, 800, 900, 1000);
+    // ************* PARA DETECCION DE INFRACCIONES ******************
+    private List<PointF> verticesZone = new ArrayList<>();
 
     public VehicleProcessor(
             Interpreter interpreter,
@@ -45,6 +46,7 @@ public class VehicleProcessor {
 
         List<BoundingBox> boxes = detector.getVehicles(output);
 
+        // control de ausencia de vehiculos
         if(boxes == null || boxes.isEmpty()){
             framesWithoutVehicles++;
 
@@ -63,6 +65,7 @@ public class VehicleProcessor {
 
         if(boxes.size() == 0){
             tracker.reset(); // reinicia todo si no hay vehiculos
+            return new ArrayList<>();
         }
 
         List<RectF> previewBoxes = new ArrayList<>();
@@ -90,13 +93,26 @@ public class VehicleProcessor {
 
         // procesar cada vehiculo
         for(TrackedVehicle vehicle : trackedVehicles){
-            if(vehicle.undetectedFrames > 2){
-                vehicle.ocrInProcess = false; // 🔥 liberar OCR
+            // ************** DETECCION DE INFRACCION ********************
+            // usaremos la parte inferior del vehiculo
+            float centroX = vehicle.box.centerX();
+            float centroY = vehicle.box.bottom;
+
+            // verificcar si el objeto esta dentro del poligono
+            boolean isInZone = pointInsideZone(centroX, centroY);
+
+            // detectar entrada a la zona (evento)
+            if(!vehicle.inZone && isInZone){
+                vehicle.detectedInfringment = true;
             }
 
+            // actualizamos estado actual
+            vehicle.inZone = isInZone;
+
+            // ************** OPERACION OCR ********************
             vehicle.framesSinceLastOcr++;
 
-            // control del timeout
+            // control del timeout (evita bloqueo)
             if(vehicle.ocrInProcess){
                 long time = System.currentTimeMillis() - vehicle.ocrStartTime;
 
@@ -110,9 +126,7 @@ public class VehicleProcessor {
             // si hay un vehiculo con texto, hay ocr cada 10 rames
             // si el vehiculo no tiene texto, se insiste
             if(!vehicle.ocrInProcess &&
-                    vehicle.plateText == null ||
-                    vehicle.plateText.isEmpty() ||
-                    vehicle.framesSinceLastOcr > 5) {
+                    vehicle.framesSinceLastOcr > 10) {
 
                 vehicle.ocrInProcess = true;
                 vehicle.ocrStartTime = System.currentTimeMillis();
@@ -147,24 +161,6 @@ public class VehicleProcessor {
                             vehicle.ocrInProcess = false;
                         }
                 );
-
-                // logica de colision
-                boolean currentIntersection = RectF.intersects(vehicle.box, infractionZone);
-                boolean prevIntersection = false;
-                if(vehicle.prevBox != null) {
-                    prevIntersection = RectF.intersects(vehicle.prevBox, infractionZone);
-                }
-
-                // detectar cruce real
-                if(!prevIntersection && currentIntersection){
-                    vehicle.detectedInfringment = true;
-                }
-
-                // guardamos estado
-                vehicle.inZone = currentIntersection;
-
-                // actualizar la posicion anterior
-                vehicle.prevBox = new RectF(vehicle.box);
             }
         }
 
@@ -267,5 +263,30 @@ public class VehicleProcessor {
 
     public void resetTracker(){
         tracker.reset();
+    }
+    public void setZone(List<PointF> vertices){
+        this.verticesZone = vertices;
+    }
+
+    private boolean pointInsideZone(float x, float y){
+        boolean dentro = false;
+
+        if(verticesZone == null || verticesZone.size() < 3){
+            return false;
+        }
+
+        for (int i = 0, j = verticesZone.size() - 1; i < verticesZone.size(); j = i++) {
+            float xi = verticesZone.get(i).x;
+            float yi = verticesZone.get(i).y;
+            float xj = verticesZone.get(j).x;
+            float yj = verticesZone.get(j).y;
+
+            boolean intersecta = ((yi > y) != (yj > y)) &&
+                    (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+            if(intersecta) dentro = !dentro;
+        }
+
+        return dentro;
     }
 }

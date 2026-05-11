@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+
+    android:background="@android:color/black">
+
+    <com.github.chrisbanes.photoview.PhotoView
+        android:id="@+id/imgFullscreen"
+
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+
+        android:scaleType="fitCenter"/>
+
+    <ImageButton
+        android:id="@+id/btnCerrarImagen"
+        android:contentDescription="Cerrar ventana flotante"
+
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:background="#FFFFFF"
+        android:src="@drawable/cerrar2"
+        android:padding="8dp"/>
+</FrameLayout>

@@ -1,37 +1,122 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main"
+    android:id="@+id/drawerLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <androidx.camera.view.PreviewView
-        android:id="@+id/camara"
+    <FrameLayout
+        android:id="@+id/main"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:scaleType="fillCenter"/>
+        android:layout_height="match_parent">
 
-    <com.example.prototipotesis.utils.BoundingBoxOverlay
-        android:id="@+id/olBoundingBox"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"/>
+        <androidx.camera.view.PreviewView
+            android:id="@+id/camara"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:scaleType="fillCenter"/>
 
-    <!-- contenedor de botones -->
+        <com.example.prototipotesis.utils.BoundingBoxOverlay
+            android:id="@+id/olBoundingBox"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+        <com.example.prototipotesis.utils.InfringmentZoneView
+            android:id="@+id/infringmentZone"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- contenedor de botones -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@null">
+
+            <ImageButton
+                android:id="@+id/btnHistorial"
+                android:contentDescription="Abrir historial de capturas"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+
+                android:background="@android:color/transparent"
+                android:src="@drawable/flecha"
+
+                android:layout_margin="16dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                />
+
+
+            <ImageButton
+                android:id="@+id/btnGaleria"
+                android:contentDescription="Abrir galería de fotos"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+
+                android:background="@android:color/transparent"
+                android:src="@drawable/galeria"
+
+                android:layout_margin="16dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <ImageButton
+                android:id="@+id/btnCapture"
+                android:contentDescription="Capturar imagen"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+
+                android:background="@android:color/transparent"
+                android:src="@drawable/capturar"
+
+                android:layout_margin="16dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <ImageButton
+                android:id="@+id/btnRecord"
+                android:contentDescription="Grabar"
+                android:layout_width="128dp"
+                android:layout_height="128dp"
+
+                android:src="@drawable/grabar"
+                android:background="@android:color/transparent"
+
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                android:layout_margin="16dp" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </FrameLayout>
+
+    <!--panel lateral derecho-->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:orientation="horizontal"
-        android:padding="16dp"
-        android:gravity="center">
+        android:id="@+id/panelHistorial"
+        android:layout_width="320dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:orientation="vertical"
+        android:background="#CC0000">
 
-        <Button
-            android:id="@+id/btnGaleria"
-            android:layout_width="wrap_content"
+        <!-- pestañas -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayoutHistorial"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Galeria"/>
+            app:tabIndicatorColor="@android:color/holo_red_light"
+            app:tabSelectedTextColor="@android:color/white"
+            android:fitsSystemWindows="true"
+            app:tabTextColor="#AAAAAA"/>
+
+        <!-- contenedor de paginas -->
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/viewPagerHistorial"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
 
     </LinearLayout>
-</FrameLayout>
+</androidx.drawerlayout.widget.DrawerLayout>

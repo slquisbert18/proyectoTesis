@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center"
+    android:background="#222222">
+
+    <TextView
+        android:id="@+id/txtTitulo"
+
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+
+        android:text="PROCESANDO..."
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"/>
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"/>
+
+    <TextView
+        android:id="@+id/txtEstado"
+
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Analizando archivo"
+        android:textSize="14sp"
+        android:textColor="#CCCCCC"
+        android:layout_marginTop="20dp"/>
+
+    <Button
+        android:id="@+id/btnCancelar"
+
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Cancelar"
+        android:layout_marginTop="24dp"/>
+</LinearLayout>

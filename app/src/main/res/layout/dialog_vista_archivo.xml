@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/layoutRoot"
+
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+
+    android:background="#222222">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <!-- contenedor multimedia -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="300dp">
+
+            <ImageView
+                android:id="@+id/imgVista"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"/>
+
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/playerView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:keepScreenOn="true"
+                app:use_controller="true"/>
+
+            <!-- boton pantalla completa -->
+            <ImageButton
+                android:id="@+id/btnFullscreen"
+                android:contentDescription="Abrir en pantalla completoa"
+
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="top|start"
+                android:layout_margin="12dp"
+                android:background="#FFFFFF"
+                android:src="@drawable/fullscreen"
+                android:padding="8dp"/>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/txtMetadata"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:paddingTop="12dp"/>
+    </LinearLayout>
+    <ImageButton
+        android:id="@+id/btnCerrarDialog"
+        android:contentDescription="Cerrar"
+
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:background="#66000000"
+        android:padding="8dp"
+        android:src="@drawable/cerrar2"/>
+
+    <ImageButton
+        android:id="@+id/btnCompartir"
+        android:contentDescription="compartir contenido"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="16dp"
+        android:background="@android:color/transparent"
+        android:padding="8dp"
+        android:src="@drawable/compartir"/>
+
+    <ImageButton
+        android:id="@+id/btnEditarNombre"
+        android:contentDescription="Editar nombre del archivo"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="16dp"
+        android:background="@android:color/transparent"
+        android:padding="8dp"
+        android:src="@drawable/editar"/>
+
+    <ImageButton
+        android:id="@+id/btnEliminar"
+        android:contentDescription="eliminar archivo"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:background="@android:color/transparent"
+        android:padding="8dp"
+        android:src="@drawable/eliminar"/>
+</FrameLayout>

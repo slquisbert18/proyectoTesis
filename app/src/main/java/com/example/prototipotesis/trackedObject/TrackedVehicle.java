@@ -10,8 +10,8 @@ import java.util.List;
 
 public class TrackedVehicle {
     public int idVehicle; // identificador unico del vehiculo
-    public BoundingBox boxModel; // boundingBox del modelo
-    public RectF box; // boundingBox (posicion del vehiculo en pantalla)
+    public BoundingBox boxModel; // caja para la captura
+    public RectF box; // caja para la preview
     public int undetectedFrames = 0; // contador de frames donde no aparece el vehiculo trackeado
 
     // ocr de la placa

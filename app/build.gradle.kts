@@ -63,4 +63,14 @@ dependencies {
     // dependencia para el reconocimiento ocr
     implementation("com.google.mlkit:text-recognition:16.0.0")
 
+    implementation ("com.google.android.material:material:1.12.0")
+    implementation ("androidx.viewpager2:viewpager2:1.1.0")
+
+     // controles para la reproduccion de videos
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+
+    // herramienta para manejar imagenes
+    implementation("com.github.chrisbanes:PhotoView:2.3.0")
+
 }
