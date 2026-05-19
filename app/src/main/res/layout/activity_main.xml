@@ -19,8 +19,13 @@
             android:layout_height="match_parent"
             app:scaleType="fillCenter"/>
 
-        <com.example.prototipotesis.utils.BoundingBoxOverlay
+        <com.example.prototipotesis.overlay.BoundingBoxOverlay
             android:id="@+id/olBoundingBox"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+        <com.example.prototipotesis.overlay.PolygonOverlay
+            android:id="@+id/polygonOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"/>
 

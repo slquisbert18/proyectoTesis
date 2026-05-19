@@ -1,4 +1,4 @@
-package com.example.prototipotesis.fragments;
+package com.example.prototipotesis.ui.fragments;
 
 import android.os.Bundle;
 import android.os.Environment;
@@ -21,14 +21,11 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FragmentVideos extends Fragment {
-    private RecyclerView recyclerVideos;
-    // adaptador global
+public class FragmentCapturas extends Fragment {
+    private RecyclerView recyclerCapturas;
     private AdaptadorHistorial adaptador;
-    // lista global
     private List<ArchivoHistorial> lista = new ArrayList<>();
-
-    public FragmentVideos() {}
+    public FragmentCapturas() {}
 
     @Nullable
     @Override
@@ -38,14 +35,14 @@ public class FragmentVideos extends Fragment {
             @Nullable Bundle savedInstanceState
     ) {
         View view = inflater.inflate(
-                R.layout.fragment_videos,
+                R.layout.fragment_capturas,
                 container,
                 false
         );
-        recyclerVideos = view.findViewById(
-                R.id.recyclerVideos
-        );
-        recyclerVideos.setLayoutManager(
+
+        recyclerCapturas = view.findViewById(R.id.recyclerCapturas);
+
+        recyclerCapturas.setLayoutManager(
                 new LinearLayoutManager(getContext())
         );
         adaptador =
@@ -53,7 +50,6 @@ public class FragmentVideos extends Fragment {
                         getContext(),
                         lista,
                         archivo -> {
-
                             DialogVistaArchivo dialog =
                                     new DialogVistaArchivo(
                                             archivo,
@@ -63,9 +59,7 @@ public class FragmentVideos extends Fragment {
                                                 public void onArchivoEliminado(
                                                         ArchivoHistorial archivo
                                                 ){
-
                                                     lista.remove(archivo);
-
                                                     adaptador.notifyDataSetChanged();
                                                 }
 
@@ -73,52 +67,45 @@ public class FragmentVideos extends Fragment {
                                                 public void onArchivoRenombrado(
                                                         ArchivoHistorial archivo
                                                 ){
-
                                                     adaptador.notifyDataSetChanged();
                                                 }
                                             }
                                     );
-
                             dialog.show(
                                     getParentFragmentManager(),
                                     "dialogArchivo"
                             );
                         }
                 );
-
-        recyclerVideos.setAdapter(adaptador);
-        // cargar videos
+        recyclerCapturas.setAdapter(adaptador);
         cargarArchivos();
 
         return view;
     }
 
-    // ================= CARGAR VIDEOS =================
     private void cargarArchivos(){
         lista.clear();
         File carpeta = new File(
                 requireContext().getExternalFilesDir(
-                        Environment.DIRECTORY_MOVIES
+                        Environment.DIRECTORY_PICTURES
                 ),
-                "Grabaciones"
+                "Capturas"
         );
-        // crear carpeta si no existe
-        if(!carpeta.exists()){
-            carpeta.mkdirs();
-        }
+
+        if(!carpeta.exists()) carpeta.mkdirs();
+
         File[] archivos = carpeta.listFiles();
+
         if(archivos != null){
             for(File archivo : archivos){
                 lista.add(
                         new ArchivoHistorial(
                                 archivo,
-                                true
+                                false
                         )
                 );
             }
         }
-
-        // refrescar recyclerview
         if(adaptador != null){
             adaptador.notifyDataSetChanged();
         }
@@ -127,7 +114,6 @@ public class FragmentVideos extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        // recargar videos automaticamente
         cargarArchivos();
     }
 }

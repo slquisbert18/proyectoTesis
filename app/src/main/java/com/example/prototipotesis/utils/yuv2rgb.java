@@ -15,7 +15,7 @@ public class yuv2rgb {
         this.contexto = contexto;
     }
 
-    public Bitmap convertir(@NonNull Image image){
+    public Bitmap image2Bitmap(@NonNull Image image){
         int ancho = image.getWidth();
         int alto = image.getHeight();
 

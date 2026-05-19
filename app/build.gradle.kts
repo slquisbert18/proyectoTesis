@@ -29,6 +29,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
 }
 
 dependencies {
@@ -72,5 +73,8 @@ dependencies {
 
     // herramienta para manejar imagenes
     implementation("com.github.chrisbanes:PhotoView:2.3.0")
+
+    // opencv para manejar figuras complejas (segmentacion)
+    implementation("org.opencv:opencv:4.10.0")
 
 }

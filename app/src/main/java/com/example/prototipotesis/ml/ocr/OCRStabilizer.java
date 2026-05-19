@@ -1,4 +1,4 @@
-package com.example.prototipotesis.ocr;
+package com.example.prototipotesis.ml.ocr;
 
 import java.util.HashMap;
 import java.util.Map;

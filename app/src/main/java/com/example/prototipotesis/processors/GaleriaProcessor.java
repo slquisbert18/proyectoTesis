@@ -12,11 +12,10 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
 
-import com.example.prototipotesis.processors.VehicleProcessor;
 import com.example.prototipotesis.trackedObject.TrackedVehicle;
+import com.example.prototipotesis.utils.BitmapUtils;
 import com.example.prototipotesis.utils.GuardarMedia;
-import com.example.prototipotesis.utils.ImageUtils;
-import com.example.prototipotesis.utils.RenderizadorDetecciones;
+import com.example.prototipotesis.render.RenderizadorDetecciones;
 
 import java.io.IOException;
 import java.util.List;
@@ -25,6 +24,7 @@ public class GaleriaProcessor {
 
     private Context context;
     private volatile boolean cancelado = false;
+    private RenderizadorDetecciones renderizadorDetecciones;
 
     // listener para devolver frames procesados
     public interface OnFrameProcesadoListener{
@@ -46,6 +46,7 @@ public class GaleriaProcessor {
             int altoPreview,
             OnFrameProcesadoListener listener
     ){
+        renderizadorDetecciones = new RenderizadorDetecciones();
         new Thread(() -> {
             try {
                 Bitmap bitmap;
@@ -66,7 +67,7 @@ public class GaleriaProcessor {
                     );
                 }
 
-                Bitmap editable = ImageUtils.convertirABitmapEditable(bitmap);
+                Bitmap editable = BitmapUtils.copiarEditable(bitmap);
 
                 // resetamos el tracker porsiacaso
                 vehicleProcessor.resetTracker();
@@ -78,9 +79,10 @@ public class GaleriaProcessor {
                                 altoPreview
                         );
 
-                Bitmap resultado = RenderizadorDetecciones.dibujarDetecciones(
+                Bitmap resultado = renderizadorDetecciones.dibujarDetecciones(
                         editable,
-                        vehiculos
+                        vehiculos,
+                        false
                 );
 
                 GuardarMedia.guardarImagenProcesada(
@@ -183,11 +185,11 @@ public class GaleriaProcessor {
             int altoPreview,
             OnFrameProcesadoListener listener
     ){
-        if(!ImageUtils.bitmapValido(frameOriginal)){
+        if(!BitmapUtils.bitmapValido(frameOriginal)){
             return;
         }
         Bitmap editable =
-                ImageUtils.convertirABitmapEditable(
+                BitmapUtils.copiarEditable(
                         frameOriginal
                 );
         List<TrackedVehicle> vehiculos =
@@ -199,9 +201,10 @@ public class GaleriaProcessor {
 
         // para dibujar las detecciones sobre la imagen (proceso desde galeria)
         Bitmap bitmapResultado =
-                RenderizadorDetecciones.dibujarDetecciones(
+                renderizadorDetecciones.dibujarDetecciones(
                         editable,
-                        vehiculos
+                        vehiculos,
+                        false
                 );
         listener.onFrameProcesado(
                 bitmapResultado,

@@ -2,6 +2,7 @@ package com.example.prototipotesis;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.PointF;
 import android.net.Uri;
 import android.os.Bundle;
 
@@ -26,28 +27,33 @@ import android.widget.Toast;
 import com.example.prototipotesis.camara.AnalizadorFrames;
 import com.example.prototipotesis.managers.CamaraManager;
 import com.example.prototipotesis.managers.GaleriaManager;
+import com.example.prototipotesis.overlay.PolygonOverlay;
 import com.example.prototipotesis.processors.CrosswalkProcessor;
+import com.example.prototipotesis.processors.FrameProcessor;
 import com.example.prototipotesis.processors.GaleriaProcessor;
 import com.example.prototipotesis.processors.PlateProcessor;
 import com.example.prototipotesis.ml.TFLiteHelper;
+import com.example.prototipotesis.processors.SegmentationProcessor;
 import com.example.prototipotesis.processors.VehicleProcessor;
+import com.example.prototipotesis.processors.segmentation.MaskScaleUtils;
 import com.example.prototipotesis.ui.DialogPreProcesamiento;
 import com.example.prototipotesis.ui.DialogProcesando;
 import com.example.prototipotesis.ui.HistorialPagerAdapter;
-import com.example.prototipotesis.utils.BoundingBoxOverlay;
+import com.example.prototipotesis.overlay.BoundingBoxOverlay;
 import com.example.prototipotesis.managers.CaptureManager;
 import com.example.prototipotesis.utils.InfringmentZoneView;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
 import java.io.IOException;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private TFLiteHelper vehicleHelper;
     private TFLiteHelper vehicleHelperGaleria;
     private TFLiteHelper plateHelper;
-    private TFLiteHelper crosswalkHelper;
+    private TFLiteHelper crucesHelper;
     //*************************************************
     private CamaraManager camaraManager;
     private AnalizadorFrames analizadorFrames;
@@ -57,20 +63,16 @@ public class MainActivity extends AppCompatActivity {
     private PlateProcessor plateProcessor;
     private VehicleProcessor vehicleProcessor;
     private VehicleProcessor vehicleProcessorGaleria;
-    private CrosswalkProcessor crosswalkProcessor;
     private GaleriaProcessor galeriaProcessor;
     private DialogProcesando dialogProcesando;
+    private SegmentationProcessor segmentacionProcessor;
 
     // ******************* WIDGETS BASE**********************
     private FrameLayout main;
     private PreviewView previewCamara;
-
-    // capa donde se dibujaran las cajas sobre las detecciones
-    private BoundingBoxOverlay olBoundingBox;
-
-    // zona de infracciones
-    private InfringmentZoneView infringmentZoneView;
-
+    private BoundingBoxOverlay olBoundingBox; // capa donde se dibujaran las cajas sobre las detecciones
+    private InfringmentZoneView infringmentZoneView; // zona de infracciones
+    private PolygonOverlay polygonOverlay;
     // ********************* botones ************************
     private ImageButton btnCapture;
     private ImageButton btnGalery;
@@ -81,11 +83,7 @@ public class MainActivity extends AppCompatActivity {
     private DrawerLayout drawerLayout;
     private TabLayout tabLayoutHistorial;
     private ViewPager2 viewPagerHistorial;
-
-    // variable para guardar el ultimo frame procesado
-    private Bitmap ultimoFrameRenderizado;
-
-    //
+    private Bitmap ultimoFrameRenderizado; // variable para guardar el ultimo frame procesado
     private final Object frameLock = new Object();
 
 
@@ -99,7 +97,6 @@ public class MainActivity extends AppCompatActivity {
                             if (uri == null) return;
 
                             String tipo = getContentResolver().getType(uri);
-
                             if (tipo == null) return;
 
                             boolean esVideo = tipo.startsWith("video/");
@@ -125,6 +122,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if (!org.opencv.android.OpenCVLoader.initDebug()) {
+            Log.e("OpenCV", "No se pudo cargar la librería");
+        } else {
+            Log.d("OpenCV", "OpenCV cargado correctamente");
+        }
+
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
 
@@ -134,11 +138,25 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        // inicializamos variables
+        inicializarViews();
+
+        inicializarManagers();
+
+        configurarHistorial();
+
+        configurarBotones();
+
+        inicializarModelos();
+
+        configurarCamara();
+    }
+
+    private void inicializarViews() {
         main = findViewById(R.id.main);
         previewCamara = findViewById(R.id.camara);
         olBoundingBox = findViewById(R.id.olBoundingBox);
         infringmentZoneView = findViewById(R.id.infringmentZone);
+        polygonOverlay = findViewById(R.id.polygonOverlay);
         drawerLayout = findViewById(R.id.drawerLayout);
         tabLayoutHistorial = findViewById(R.id.tabLayoutHistorial);
         viewPagerHistorial = findViewById(R.id.viewPagerHistorial);
@@ -148,12 +166,15 @@ public class MainActivity extends AppCompatActivity {
         btnRecord = findViewById(R.id.btnRecord);
         btnHistorial = findViewById(R.id.btnHistorial);
 
-        // inicializamos los manager
+    }
+
+    private void inicializarManagers() {
         captureManager = new CaptureManager(this);
         galeriaManager = new GaleriaManager(selectorMedia);
         galeriaProcessor = new GaleriaProcessor(this);
+    }
 
-        //*********************************************************
+    private void configurarHistorial() {
         HistorialPagerAdapter adapter =
                 new HistorialPagerAdapter(this);
         viewPagerHistorial.setAdapter(adapter);
@@ -163,16 +184,16 @@ public class MainActivity extends AppCompatActivity {
                 viewPagerHistorial,
                 (tab, position) -> {
 
-                    if(position == 0){
+                    if (position == 0) {
                         tab.setText("Capturas");
-                    }
-                    else{
+                    } else {
                         tab.setText("Videos");
                     }
                 }
         ).attach();
-        //*********************************************************
+    }
 
+    private void configurarBotones() {
         // agregamos al boton capture la capacidad de capturar lo que esta en pantalla
         btnCapture.setOnClickListener(v -> captureManager.capturarImagen());
         btnRecord.setOnClickListener(v->{
@@ -190,103 +211,98 @@ public class MainActivity extends AppCompatActivity {
         btnHistorial.setOnClickListener(v -> {
             drawerLayout.openDrawer(GravityCompat.END);
         });
+    }
 
-        if (infringmentZoneView == null) {
-            Log.e("ERROR_FATAL", "infringmentZoneView es NULL");
-            return;
-        }
-        if (olBoundingBox == null) {
-            Log.e("ERROR_FATAL", "olBoundingBox es NULL");
-            return;
-        }
-
-        if (previewCamara == null) {
-            Log.e("ERROR_FATAL", "preview es NULL");
-            return;
-        }
-
-
+    private void inicializarModelos() {
         try {
-            // carga de modelos tflite
+            // placas
             plateHelper = new TFLiteHelper(
                     this,
-                    "modelos/best_placas16.tflite"
+                    "modelos/modeloPlacas16.tflite"
             );
             plateProcessor = new PlateProcessor(plateHelper.getInterprete());
 
-            // modelo VEHICULOS
+            // vehiculos
             vehicleHelper = new TFLiteHelper(
                     this, "modelos/yoloDetector.tflite"
             );
             vehicleProcessor = new VehicleProcessor(vehicleHelper.getInterprete(), plateProcessor);
 
-            vehicleHelperGaleria = new TFLiteHelper(this, "modelos/yoloDetector.tflite");
-            vehicleProcessorGaleria =
-                    new VehicleProcessor(
-                            vehicleHelperGaleria.getInterprete(),
-                            plateProcessor
-                    );
-
-            // modelo cruces
-            crosswalkHelper = new TFLiteHelper(
-                    this,
-                    "modelos/crosswalkDetector16.tflite"
+            // vehiculos (para galeria)
+            vehicleHelperGaleria = new TFLiteHelper(
+                    this, "modelos/yoloDetector.tflite"
             );
-            crosswalkProcessor = new CrosswalkProcessor(crosswalkHelper.getInterprete());
+            vehicleProcessorGaleria =
+                    new VehicleProcessor(vehicleHelperGaleria.getInterprete(), plateProcessor);
 
-            // configuracion de la camara una vez que el view esta listo
-            previewCamara.post(() -> {
-                this.analizadorFrames =
-                        new AnalizadorFrames(
-                                this,
-                                vehicleProcessor,
-                                crosswalkProcessor,
-                                vehicles -> {
-                                    // as actualizaciones de UI (olBoundingBox) deben ir en el hilo principal siempre.
-                                    runOnUiThread(() -> {
-                                        if (vehicles != null) {
-                                            olBoundingBox.updateVehicles(vehicles);
-                                        } else {
-                                            vehicleProcessor.resetTracker();
-                                            olBoundingBox.limpiar();
-                                        }
-                                    });
-                                },
-                                bitmap -> {
-                                    synchronized (frameLock) {
-                                        if (ultimoFrameRenderizado != null &&
-                                                !ultimoFrameRenderizado.isRecycled()) {
-                                            ultimoFrameRenderizado.recycle(); // liberar el anterior
-                                        }
-                                        ultimoFrameRenderizado = bitmap;
-                                        captureManager.actualizarFrame(bitmap);
-                                    }
-                                },
-                                previewCamara.getWidth(),
-                                previewCamara.getHeight(),
-                                infringmentZoneView
-                        );
+            // cruces peatonales
+            crucesHelper = new TFLiteHelper(
+                    this,
+                    "modelos/modeloCruces16.tflite"
+            );
+            segmentacionProcessor = new SegmentationProcessor(crucesHelper.getInterprete());
 
-                // Iniciar la camara
-                camaraManager = new CamaraManager(
-                        this,
-                        previewCamara,
-                        analizadorFrames
-                );
-                camaraManager.verificarPermisos();
-            });
-
-
-        } catch (IOException error) {
+        } catch (Exception e) {
             Toast.makeText(this, "Error cargando el modelo", Toast.LENGTH_LONG).show();
             Log.e(
                     "PRUEBA_MODELO",
                     "Error al cargar el modelo TFLite",
-                    error
+                    e
             );
         }
     }
 
+    private void configurarCamara(){
+        previewCamara.post(() -> {
+            this.analizadorFrames =
+                    new AnalizadorFrames(
+                            this,
+                            vehicleProcessor,
+                            segmentacionProcessor,
+                            (
+                                    vehiculos,
+                                    verticesCruce,
+                                    bitmapRenderizado
+                            ) -> {
+                                runOnUiThread(() -> {
+                                    // vehiculos
+                                    if (vehiculos != null && !vehiculos.isEmpty()) {
+                                        olBoundingBox.updateVehicles(vehiculos);
+                                    }
+                                    else {
+                                        olBoundingBox.limpiar();
+                                        vehicleProcessor.resetTracker();
+                                    }
+                                    // poligono
+                                    if(verticesCruce != null && !verticesCruce.isEmpty()){
+                                        polygonOverlay.post(()->{
+                                            List<PointF> verticesEscalados =
+                                                    MaskScaleUtils
+                                                            .escalarVertices(
+                                                                    verticesCruce,
+                                                                    160,
+                                                                    160,
+                                                                    polygonOverlay.getWidth(),
+                                                                    polygonOverlay.getHeight()
+                                                            );
+                                            polygonOverlay.setVertices(verticesEscalados);
+                                        });
+                                    }
+                                });
+                            }
+                    );
+
+            // Iniciar la camara
+            camaraManager = new CamaraManager(
+                    this,
+                    previewCamara,
+                    analizadorFrames
+            );
+            camaraManager.verificarPermisos();
+        });
+    }
+
+    // galeria
     private void iniciarProcesamiento(
             Uri uri,
             boolean esVideo
@@ -376,6 +392,15 @@ public class MainActivity extends AppCompatActivity {
             ultimoFrameRenderizado.recycle();
             ultimoFrameRenderizado = null;
         }
+
+        // liberar modelos
+        if(vehicleHelper != null) vehicleHelper.close();
+
+        if(vehicleHelperGaleria != null) vehicleHelperGaleria.close();
+
+        if(plateHelper != null) plateHelper.close();
+
+        if(crucesHelper != null) crucesHelper.close();
     }
 
     @Override
@@ -388,9 +413,6 @@ public class MainActivity extends AppCompatActivity {
                 // Obtenemos las nuevas dimensiones
                 int nuevoAncho = previewCamara.getWidth();
                 int nuevoAlto = previewCamara.getHeight();
-
-                // Actualizamos el analizador para que los cálculos de coordenadas sean correctos
-                analizadorFrames.actualizarDimensiones(nuevoAncho, nuevoAlto);
 
                 // limpiamos overlay hasta que llegue el proximo frame
                 olBoundingBox.limpiar();

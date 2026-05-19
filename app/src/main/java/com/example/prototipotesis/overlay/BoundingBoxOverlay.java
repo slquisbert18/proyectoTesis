@@ -1,19 +1,13 @@
-package com.example.prototipotesis.utils;
-
-import static org.tensorflow.lite.TensorFlowLite.init;
+package com.example.prototipotesis.overlay;
 
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.PointF;
 import android.graphics.PorterDuff;
-import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.View;
 
-import com.example.prototipotesis.trackedObject.TrackedPlate;
 import com.example.prototipotesis.trackedObject.TrackedVehicle;
 
 import java.util.ArrayList;

@@ -5,8 +5,8 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 
-import com.example.prototipotesis.fragments.FragmentCapturas;
-import com.example.prototipotesis.fragments.FragmentVideos;
+import com.example.prototipotesis.ui.fragments.FragmentCapturas;
+import com.example.prototipotesis.ui.fragments.FragmentVideos;
 
 public class HistorialPagerAdapter extends FragmentStateAdapter {
 
