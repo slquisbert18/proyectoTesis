@@ -1,9 +1,9 @@
-package com.example.prototipotesis.detectors;
+package com.example.prototipotesis.processors.plateDetection;
 
 import android.graphics.Bitmap;
 
 import com.example.prototipotesis.ml.BoundingBox;
-import com.example.prototipotesis.utils.ImageUtils;
+import com.example.prototipotesis.utils.BitmapUtils;
 
 import org.tensorflow.lite.Interpreter;
 
@@ -41,7 +41,7 @@ public class PlateDetector {
         );
 
         // 2. convertir Bitmap a ByteBuffer
-        ByteBuffer entradaModelo = ImageUtils.bitmap2bytebuffer(imagenResize, TAMANIO_ENTRADA, CANALES_COLOR);
+        ByteBuffer entradaModelo = BitmapUtils.bitmap2bytebuffer(imagenResize, TAMANIO_ENTRADA, CANALES_COLOR);
 
         // 3. crear estructura de salida
         /*

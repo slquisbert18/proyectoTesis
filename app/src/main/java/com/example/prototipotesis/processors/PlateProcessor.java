@@ -6,7 +6,7 @@ import java.util.List;
 import org.tensorflow.lite.Interpreter;
 
 import com.example.prototipotesis.ml.BoundingBox;
-import com.example.prototipotesis.detectors.PlateDetector;
+import com.example.prototipotesis.processors.plateDetection.PlateDetector;
 import com.example.prototipotesis.ml.ocr.NormalizarPlaca;
 import com.example.prototipotesis.ml.ocr.OCRHelper;
 import com.example.prototipotesis.processors.plateDetection.PlateDetectorParser;

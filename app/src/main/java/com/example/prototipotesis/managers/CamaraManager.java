@@ -1,6 +1,7 @@
 package com.example.prototipotesis.managers;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.Preview;
@@ -27,8 +28,8 @@ public class CamaraManager {
     private PreviewView vistaPrevia; // aca se mostrara las imagenes recogidas por la camara
     private ProcessCameraProvider proveedorCamara; // administra el ciclo de vida de la camara
     private ExecutorService ejecutorAnalisis;
-
     private AnalizadorFrames analizadorFrames;
+    private Camera camera;
 
     public CamaraManager(AppCompatActivity actividad,
                          PreviewView vistaPrevia,
@@ -43,7 +44,8 @@ public class CamaraManager {
     public void verificarPermisos(){
         if (ContextCompat.checkSelfPermission(
                 actividad,
-                Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
+                Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED){
             iniciarCamara();
         }
         else{
@@ -82,16 +84,16 @@ public class CamaraManager {
     // mostrar preview
     private void mostrarPreview(){
         Preview preview = new Preview.Builder().build();
-        CameraSelector selector = CameraSelector.DEFAULT_BACK_CAMERA;
 
         preview.setSurfaceProvider(vistaPrevia.getSurfaceProvider());
 
         // analisis de imagenes mostradas en el previewView
         ImageAnalysis analisisImagen =
                 new ImageAnalysis.Builder()
+                        // resolucion estable
                         .setTargetResolution(
                                new Size(640, 480)
-                        )
+                        )// para evitar acumulacion de frames
                         .setBackpressureStrategy(
                                 ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
                         )
@@ -101,14 +103,19 @@ public class CamaraManager {
                 ejecutorAnalisis,
                 analizadorFrames
         );
+
+        // selector
+        CameraSelector selector = CameraSelector.DEFAULT_BACK_CAMERA;
+        // limpieza de casoos de uso anteriores
         proveedorCamara.unbindAll();
 
-        proveedorCamara.bindToLifecycle(
+        camera = proveedorCamara.bindToLifecycle(
                 actividad,
                 selector,
                 preview,
                 analisisImagen
         );
+        camera.getCameraControl().setZoomRatio(1.0f);
     }
 
     public void liberarRecursos(){

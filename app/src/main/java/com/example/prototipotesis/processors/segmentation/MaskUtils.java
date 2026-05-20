@@ -9,6 +9,9 @@ public class MaskUtils {
     // cantidad protos
     private static final int PROTO_CHANNELS = 32;
 
+    // umbral de confianza minimo
+    private static final float MIN_CONFIDENCE = 0.70f;
+
     /*
     * OBTENER MEJOR DETECCION
     * */
@@ -21,7 +24,7 @@ public class MaskUtils {
         for (int i = 0; i < 8400; i++) {
             float conf =
                     result.detections[0][4][i];
-            if (conf > bestConf) {
+            if (conf > bestConf && conf > MIN_CONFIDENCE) {
                 bestConf = conf;
                 best = i;
             }

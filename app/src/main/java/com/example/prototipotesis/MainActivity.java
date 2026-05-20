@@ -20,7 +20,6 @@ import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager2.widget.ViewPager2;
 
 import android.util.Log;
-import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
@@ -28,24 +27,23 @@ import com.example.prototipotesis.camara.AnalizadorFrames;
 import com.example.prototipotesis.managers.CamaraManager;
 import com.example.prototipotesis.managers.GaleriaManager;
 import com.example.prototipotesis.overlay.PolygonOverlay;
-import com.example.prototipotesis.processors.CrosswalkProcessor;
-import com.example.prototipotesis.processors.FrameProcessor;
 import com.example.prototipotesis.processors.GaleriaProcessor;
 import com.example.prototipotesis.processors.PlateProcessor;
 import com.example.prototipotesis.ml.TFLiteHelper;
 import com.example.prototipotesis.processors.SegmentationProcessor;
 import com.example.prototipotesis.processors.VehicleProcessor;
 import com.example.prototipotesis.processors.segmentation.MaskScaleUtils;
+import com.example.prototipotesis.render.RenderizadorDetecciones;
+import com.example.prototipotesis.trackedObject.TrackedVehicle;
 import com.example.prototipotesis.ui.DialogPreProcesamiento;
 import com.example.prototipotesis.ui.DialogProcesando;
 import com.example.prototipotesis.ui.HistorialPagerAdapter;
 import com.example.prototipotesis.overlay.BoundingBoxOverlay;
 import com.example.prototipotesis.managers.CaptureManager;
-import com.example.prototipotesis.utils.InfringmentZoneView;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -68,10 +66,8 @@ public class MainActivity extends AppCompatActivity {
     private SegmentationProcessor segmentacionProcessor;
 
     // ******************* WIDGETS BASE**********************
-    private FrameLayout main;
     private PreviewView previewCamara;
     private BoundingBoxOverlay olBoundingBox; // capa donde se dibujaran las cajas sobre las detecciones
-    private InfringmentZoneView infringmentZoneView; // zona de infracciones
     private PolygonOverlay polygonOverlay;
     // ********************* botones ************************
     private ImageButton btnCapture;
@@ -85,6 +81,10 @@ public class MainActivity extends AppCompatActivity {
     private ViewPager2 viewPagerHistorial;
     private Bitmap ultimoFrameRenderizado; // variable para guardar el ultimo frame procesado
     private final Object frameLock = new Object();
+    //********************************************************
+    private Bitmap ultimoFrameLimpio;
+    private List<PointF> ultimosVerticesDetectados = new ArrayList<>();
+    private List<TrackedVehicle> ultimosVehiculosDetectados = new ArrayList<>();
 
 
     // SELECTOR DE IMAGENES DE GALERIA
@@ -152,10 +152,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void inicializarViews() {
-        main = findViewById(R.id.main);
         previewCamara = findViewById(R.id.camara);
         olBoundingBox = findViewById(R.id.olBoundingBox);
-        infringmentZoneView = findViewById(R.id.infringmentZone);
         polygonOverlay = findViewById(R.id.polygonOverlay);
         drawerLayout = findViewById(R.id.drawerLayout);
         tabLayoutHistorial = findViewById(R.id.tabLayoutHistorial);
@@ -171,7 +169,6 @@ public class MainActivity extends AppCompatActivity {
     private void inicializarManagers() {
         captureManager = new CaptureManager(this);
         galeriaManager = new GaleriaManager(selectorMedia);
-        galeriaProcessor = new GaleriaProcessor(this);
     }
 
     private void configurarHistorial() {
@@ -195,7 +192,25 @@ public class MainActivity extends AppCompatActivity {
 
     private void configurarBotones() {
         // agregamos al boton capture la capacidad de capturar lo que esta en pantalla
-        btnCapture.setOnClickListener(v -> captureManager.capturarImagen());
+        btnCapture.setOnClickListener(v -> {
+            if (ultimoFrameLimpio == null) {
+                Toast.makeText(this, "Cámara no lista", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Si vehiculos o vertices son null, pasamos una lista vacía para evitar crash
+            List<TrackedVehicle> vh = ultimosVehiculosDetectados != null ? ultimosVehiculosDetectados : new ArrayList<>();
+            List<PointF> vt = ultimosVerticesDetectados != null ? ultimosVerticesDetectados : new ArrayList<>();
+
+            Bitmap bitmapFinal = RenderizadorDetecciones.dibujarDetecciones(
+                    ultimoFrameLimpio, vh, vt, true
+            );
+            captureManager.guardarImagen(bitmapFinal);
+
+            // actualizamos historial
+            actualizarHistorial();
+        });
+
         btnRecord.setOnClickListener(v->{
             if(captureManager.estaGrabando()){
                 btnRecord.setImageResource(R.drawable.grabar);
@@ -260,10 +275,15 @@ public class MainActivity extends AppCompatActivity {
                             vehicleProcessor,
                             segmentacionProcessor,
                             (
+                                    bitmapOriginal,
                                     vehiculos,
-                                    verticesCruce,
-                                    bitmapRenderizado
+                                    verticesCruce
                             ) -> {
+                                // almacenamos los resultados para su uso en la captura de imagenes
+                                this.ultimoFrameLimpio = bitmapOriginal;
+                                this.ultimosVerticesDetectados = verticesCruce;
+                                this.ultimosVehiculosDetectados = vehiculos;
+
                                 runOnUiThread(() -> {
                                     // vehiculos
                                     if (vehiculos != null && !vehiculos.isEmpty()) {
@@ -285,10 +305,34 @@ public class MainActivity extends AppCompatActivity {
                                                                     polygonOverlay.getWidth(),
                                                                     polygonOverlay.getHeight()
                                                             );
-                                            polygonOverlay.setVertices(verticesEscalados);
+                                            if(verticesEscalados != null && verticesEscalados.size() >= 4){
+                                                polygonOverlay.setVertices(verticesEscalados);
+                                            }
+                                            else{
+                                                polygonOverlay.clear();
+                                            }
                                         });
                                     }
+                                    else{
+                                        polygonOverlay.clear();
+                                    }
                                 });
+
+                                // SOLO grabar si esta grabando
+                                if(captureManager.estaGrabando()){
+
+                                    Bitmap bitmapGrabacion =
+                                            RenderizadorDetecciones
+                                                    .dibujarDetecciones(
+                                                            bitmapOriginal,
+                                                            vehiculos,
+                                                            verticesCruce,
+                                                            true
+                                                    );
+
+                                    captureManager.actualizarFrame(bitmapGrabacion);
+                                }
+
                             }
                     );
 
@@ -328,7 +372,7 @@ public class MainActivity extends AppCompatActivity {
                     vehicleProcessorGaleria,
                     previewCamara.getWidth(),
                     previewCamara.getHeight(),
-                    (bitmap, vehiculos) -> {
+                    (bitmap, vehiculos, vertices) -> {
 
                         runOnUiThread(() -> {
                             if (vehiculos != null && !vehiculos.isEmpty()) {
@@ -357,7 +401,7 @@ public class MainActivity extends AppCompatActivity {
                     vehicleProcessor,
                     previewCamara.getWidth(),
                     previewCamara.getHeight(),
-                    (bitmap, vehiculos) -> {
+                    (bitmap, vehiculos, vertices) -> {
                         runOnUiThread(() -> {
                             if(vehiculos != null && !vehiculos.isEmpty()){
                                 olBoundingBox.updateVehicles(vehiculos);
@@ -386,6 +430,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy(){
         super.onDestroy();
         if (camaraManager != null) camaraManager.liberarRecursos();
+
+        if(captureManager != null) captureManager.liberarRecursos();
 
         // para evitar fugas de memoria al cerrar la app
         if (ultimoFrameRenderizado != null) {
@@ -418,6 +464,17 @@ public class MainActivity extends AppCompatActivity {
                 olBoundingBox.limpiar();
 
                 Log.d("ROTACION", "Nuevas dimensiones: " + nuevoAncho + "x" + nuevoAlto);
+            }
+        });
+    }
+
+    private void actualizarHistorial(){
+        // Forzar actualización del historial
+        runOnUiThread(() -> {
+            if (viewPagerHistorial.getAdapter() != null) {
+                viewPagerHistorial.getAdapter().notifyDataSetChanged();
+                // Opcional: mover a la pestaña de capturas para ver el resultado
+                viewPagerHistorial.setCurrentItem(0, true);
             }
         });
     }

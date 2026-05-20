@@ -3,7 +3,6 @@ package com.example.prototipotesis.processors.vehicleDetection;
 import android.graphics.Bitmap;
 
 import com.example.prototipotesis.utils.BitmapUtils;
-import com.example.prototipotesis.utils.ImageUtils;
 
 import org.tensorflow.lite.Interpreter;
 
@@ -25,7 +24,7 @@ public class VehicleDetector {
 
         // convertimos bitmap a byteBuffer
         ByteBuffer input =
-                ImageUtils.bitmap2bytebuffer(bitmapRedimensionado, INPUT_SIZE, COLOR_CHANNELS);
+                BitmapUtils.bitmap2bytebuffer(bitmapRedimensionado, INPUT_SIZE, COLOR_CHANNELS);
 
         //salida tipica de YOLO: [1][cantidadDetecciones][atributos]
         float[][][] output = new float[1][6300][85];

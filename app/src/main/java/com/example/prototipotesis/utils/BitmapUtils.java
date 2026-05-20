@@ -4,7 +4,6 @@ import static android.graphics.Bitmap.createScaledBitmap;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Matrix;
@@ -119,7 +118,7 @@ public class BitmapUtils {
 
         return imagenGris;
     }
-
+/*
     public static Bitmap aumentarContraste(
             Bitmap imagenOriginal,
             float nivelContraste
@@ -147,10 +146,9 @@ public class BitmapUtils {
         return imagenContraste;
     }
 
-    /**
-     * Binariza la imagen (blanco y negro)
-     * -> util cuando el fondo es claro y los caracteres ocultos
-     */
+    // inariza la imagen (blanco y negro)
+    // util cuando el fondo es oscuro y los caracteres claros
+
     public static Bitmap binarizar(Bitmap imagenOriginal){
         int ancho = imagenOriginal.getWidth();
         int alto = imagenOriginal.getHeight();
@@ -180,7 +178,7 @@ public class BitmapUtils {
         }
         return imagenBinaria;
     }
-
+*/
     public static Bitmap copiarEditable(Bitmap bitmap){
         return bitmap.copy(
                 Bitmap.Config.ARGB_8888,

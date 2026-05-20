@@ -13,17 +13,12 @@ import androidx.camera.core.ExperimentalGetImage;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 
-import com.example.prototipotesis.overlay.PolygonOverlay;
-import com.example.prototipotesis.processors.CrosswalkProcessor;
-import com.example.prototipotesis.processors.FrameProcessor;
 import com.example.prototipotesis.processors.SegmentationProcessor;
 import com.example.prototipotesis.processors.VehicleProcessor;
 import com.example.prototipotesis.processors.segmentation.MaskContourExtractor;
 import com.example.prototipotesis.processors.segmentation.MaskUtils;
 import com.example.prototipotesis.processors.segmentation.SegmentationResult;
-import com.example.prototipotesis.render.RenderizadorDetecciones;
 import com.example.prototipotesis.trackedObject.TrackedVehicle;
-import com.example.prototipotesis.utils.InfringmentZoneView;
 import com.example.prototipotesis.utils.yuv2rgb;
 
 import java.util.ArrayList;
@@ -34,9 +29,9 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
     // fragmento para recibir el PreviewView del MainActivity
     public interface EscucharResultados{
         void alDetectar(
+                Bitmap BitmapOriginal,
                 List<TrackedVehicle> vehiculos,
-                List<PointF> verticesCrice,
-                Bitmap bitmapRenderizado
+                List<PointF> verticesCrice
         );
     }
 
@@ -46,11 +41,10 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
     //************** CONTROL DE PROCESAMIENTO ***************************
     private boolean procesando = false; // Evita procesar varios frames al mismo tiempo
     private long ultimoTiempoProcesado = 0;
-    private static final long INTERVALO_PROCESAMIENTO = 80; //ms (12 fps aprox)
+    private static final long INTERVALO_PROCESAMIENTO = 100; //ms (12 fps aprox)
 
     // helpers
     private final yuv2rgb conversor;
-    private final RenderizadorDetecciones renderizador;
 
     // procesadores
     private final VehicleProcessor vehicleProcessor;
@@ -58,6 +52,15 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
 
     // reutilizable
     private final Matrix matrizRotacion = new Matrix();
+
+    // ultimo momento en que se ejecuto segmentacion
+    private long ultimoTiempoSegmentacion = 0;
+
+    // intervalo entre segmentaciones
+    private static final long INTERVALO_SEGMENTACION = 800;
+
+    // ultimo poligono estable detectado
+    private List<PointF> ultimoPoligono = new ArrayList<>();
 
 
     public AnalizadorFrames(
@@ -69,7 +72,6 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
         this.vehicleProcessor = vehicleProcessor;
         this.segmentationProcessor = segmentationProcessor;
         this.escuchador = escuchador;
-        this.renderizador = new RenderizadorDetecciones();
         this.conversor = new yuv2rgb(context);
     }
 
@@ -98,10 +100,6 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
             Image imagen = imageProxy.getImage();
 
             if (imagen == null) return;
-
-            // actualizar zona
-            //List<PointF> vertices = viewZone.getVertices();
-            //vehicleProcessor.setZone(vertices);
 
             // 1. convertir a Bitmap
             Bitmap bitmapOriginal = conversor.image2Bitmap(imagen);
@@ -134,31 +132,61 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
                     );
 
             // 4. detectar cruce peatonal
-            SegmentationResult result = segmentationProcessor.segment(bitmapRotado);
-            int bestDetection = MaskUtils.obtenerMejorDeteccion(result);
-            List<PointF> vertices = new ArrayList<>();
-            if(bestDetection != -1){
-                float[][] mask =
-                        MaskUtils.crearMascaraFinal(result, bestDetection);
+            // vertices que mandaremos al mainActivity
+            List<PointF> verticesActuales = new ArrayList<>(ultimoPoligono);
 
-                vertices = MaskContourExtractor.extraerVertices(mask);
+            // tiempo actual
+            long tiempoSegmentacion = System.currentTimeMillis();
+
+            // ejecutar segmentacion cada cierto tiempo
+            if (tiempoSegmentacion - ultimoTiempoSegmentacion >= INTERVALO_SEGMENTACION){
+                // actualizar tiempo
+                ultimoTiempoSegmentacion = tiempoSegmentacion;
+
+                // ejecutamos la inferencia
+                SegmentationResult result = segmentationProcessor.segment(bitmapRotado);
+                int bestDetection = MaskUtils.obtenerMejorDeteccion(result);
+
+                if(bestDetection != -1){
+                    float[][] mask =
+                            MaskUtils.crearMascaraFinal(result, bestDetection);
+
+                    List<PointF> vertices = MaskContourExtractor.extraerVertices(mask);
+
+                    // validar poligono
+                    if(vertices != null && vertices.size() >= 4){
+                        // guardar poligono estable
+                        ultimoPoligono = vertices;
+
+                        //usar nuevos vertices
+                        verticesActuales = vertices;
+
+                        Log.d(
+                                "CRUCE",
+                                "Cruce peatonal detectado"
+                        );
+                    }
+                    else {
+                        Log.d(
+                                "CRUCE",
+                                "Contorno inválido"
+                        );
+                        ultimoPoligono.clear();
+                        verticesActuales.clear();
+                    }
+                }
+                else{
+                    ultimoPoligono.clear();
+                    verticesActuales.clear();
+                }
             }
 
-            // 5. renderizado
-            Bitmap bitmapRenderizado = renderizador.dibujarDetecciones(
-                    bitmapRotado,
-                    vehiculos,
-                    true
-            );
-
-            // 6. enviamos los resultados al mainActivity
+            // 5. enviamos los resultados al mainActivity
             if(escuchador != null){
                 escuchador.alDetectar(
-                        vehiculos, vertices, bitmapRenderizado
+                        bitmapRotado, vehiculos, verticesActuales
                 );
             }
-
-
         } catch (Exception e) {
             Log.e("ANALIZADOR", "Error procesando frame", e);
         } finally {
@@ -166,6 +194,4 @@ public class AnalizadorFrames implements ImageAnalysis.Analyzer {
             imageProxy.close();
         }
     }
-
-
 }

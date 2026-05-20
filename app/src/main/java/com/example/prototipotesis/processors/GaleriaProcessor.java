@@ -3,6 +3,7 @@ package com.example.prototipotesis.processors;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.ImageDecoder;
+import android.graphics.PointF;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
@@ -12,12 +13,16 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.example.prototipotesis.processors.segmentation.MaskContourExtractor;
+import com.example.prototipotesis.processors.segmentation.MaskUtils;
+import com.example.prototipotesis.processors.segmentation.SegmentationResult;
 import com.example.prototipotesis.trackedObject.TrackedVehicle;
 import com.example.prototipotesis.utils.BitmapUtils;
 import com.example.prototipotesis.utils.GuardarMedia;
 import com.example.prototipotesis.render.RenderizadorDetecciones;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 public class GaleriaProcessor {
@@ -25,17 +30,20 @@ public class GaleriaProcessor {
     private Context context;
     private volatile boolean cancelado = false;
     private RenderizadorDetecciones renderizadorDetecciones;
+    private SegmentationProcessor segmentationProcessor;
 
     // listener para devolver frames procesados
     public interface OnFrameProcesadoListener{
         void onFrameProcesado(
                 Bitmap bitmap,
-                List<TrackedVehicle> vehiculos
+                List<TrackedVehicle> vehiculos,
+                List<PointF> vertices
         );
     }
 
-    public GaleriaProcessor(Context context){
+    public GaleriaProcessor(Context context, SegmentationProcessor segmentationProcessor){
         this.context = context;
+        this.segmentationProcessor = segmentationProcessor;
     }
 
     // ================= IMAGEN =================
@@ -79,9 +87,21 @@ public class GaleriaProcessor {
                                 altoPreview
                         );
 
+                // ejecutamos la inferencia
+                SegmentationResult result = segmentationProcessor.segment(editable);
+                int bestDetection = MaskUtils.obtenerMejorDeteccion(result);
+                List<PointF> vertices = new ArrayList<>();
+                if(bestDetection != -1) {
+                    float[][] mask =
+                            MaskUtils.crearMascaraFinal(result, bestDetection);
+
+                            vertices = MaskContourExtractor.extraerVertices(mask);
+                }
+
                 Bitmap resultado = renderizadorDetecciones.dibujarDetecciones(
                         editable,
                         vehiculos,
+                        vertices,
                         false
                 );
 
@@ -93,7 +113,8 @@ public class GaleriaProcessor {
                 // devolver resultado
                 listener.onFrameProcesado(
                         resultado,
-                        vehiculos
+                        vehiculos,
+                        vertices
                 );
             } catch (IOException e) {
                 new Handler(Looper.getMainLooper()).post(() -> {
@@ -199,16 +220,29 @@ public class GaleriaProcessor {
                         altoPreview
                 );
 
+        // ejecutamos la inferencia
+        SegmentationResult result = segmentationProcessor.segment(editable);
+        int bestDetection = MaskUtils.obtenerMejorDeteccion(result);
+        List<PointF> vertices = new ArrayList<>();
+        if(bestDetection != -1) {
+            float[][] mask =
+                    MaskUtils.crearMascaraFinal(result, bestDetection);
+
+            vertices = MaskContourExtractor.extraerVertices(mask);
+        }
+
         // para dibujar las detecciones sobre la imagen (proceso desde galeria)
         Bitmap bitmapResultado =
                 renderizadorDetecciones.dibujarDetecciones(
                         editable,
                         vehiculos,
+                        vertices,
                         false
                 );
         listener.onFrameProcesado(
                 bitmapResultado,
-                vehiculos
+                vehiculos,
+                vertices
         );
         // guardamos los frames procesados
         GuardarMedia.guardarImagenProcesada(

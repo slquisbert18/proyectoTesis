@@ -4,6 +4,8 @@ import java.nio.ByteBuffer;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -24,7 +26,7 @@ public class CaptureManager {
     private boolean grabando = false;
     private File captures; // carpeta donde se guardaran las capturas
     private File recordings; // carpeta donde se guardaran las grabaciones
-    private static final int FPS = 15;
+    private static final int FPS = 10;
 
     private MediaCodec encoder;
     private MediaMuxer muxer;
@@ -32,8 +34,14 @@ public class CaptureManager {
     private boolean muxerStarted = false;
     private long tiempoInicioGrabacion = 0;
 
+    private ExecutorService ejecutorGrabacion;
+
     public CaptureManager(Context context){
         this.context = context.getApplicationContext();
+
+        // hilo para grabacion
+        ejecutorGrabacion = Executors.newSingleThreadExecutor();
+
         // creamos las carpetas donde se guardaran capturas, temps y videos
         captures = new File(
             context.getExternalFilesDir(
@@ -56,30 +64,10 @@ public class CaptureManager {
     * este metodo recibe los frames procesados desde Analizador
     * */
     public void actualizarFrame(Bitmap bitmap){
-        // liberamos el frame anterior para evitar acumulacion de memoria
-        if(ultimoFrame != null && ultimoFrame != bitmap && !ultimoFrame.isRecycled()){
-            ultimoFrame.recycle();
-        }
-
         // guardamos nuevo frame
         ultimoFrame = bitmap;
 
-        // grabacion en tiempo real
-        if(grabando){
-            try{
-                // bitmap -> yuv
-                byte[] yuv =
-                        Bitmap2yuv.bitmap2NV12(bitmap);
-                // enviar directo al encoder
-                encodeFrame(yuv);
-            }catch(Exception e){
-                Log.e(
-                        "CAPTURE_MANAGER",
-                        "Error grabando frame",
-                        e
-                );
-            }
-        }
+        // grabacion en tiempo real es muy pesado
     }
 
     public void capturarImagen(){
@@ -103,7 +91,7 @@ public class CaptureManager {
         guardarImagen(copia);
     }
 
-    private void guardarImagen(Bitmap bitmap){
+    public void guardarImagen(Bitmap bitmap){
         // nombre del archivo
         String nombre = "captura_" + System.currentTimeMillis() + ".jpg";
 
@@ -235,6 +223,22 @@ public class CaptureManager {
         return grabando;
     }
 
+    private void grabarFrame(Bitmap bitmap){
+        ejecutorGrabacion.execute(() -> {
+            try{
+                byte[] yuv = Bitmap2yuv.bitmap2NV12(bitmap);
+                encodeFrame(yuv);
+
+            }catch(Exception e){
+                Log.e(
+                        "CAPTURE_MANAGER",
+                        "Error grabando frame",
+                        e
+                );
+            }
+        });
+    }
+
     private void encodeFrame(byte[] data){
         try{
             int inputBufferIndex = encoder.dequeueInputBuffer(10000);
@@ -330,6 +334,12 @@ public class CaptureManager {
                     f.delete(); // borra cada frame individualmente
                 }
             }
+        }
+    }
+
+    public void liberarRecursos(){
+        if(ejecutorGrabacion != null){
+            ejecutorGrabacion.shutdown();
         }
     }
 

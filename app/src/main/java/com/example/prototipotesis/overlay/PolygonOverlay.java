@@ -1,12 +1,12 @@
 package com.example.prototipotesis.overlay;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.PointF;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
+
+import com.example.prototipotesis.utils.Dibujo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,34 +16,16 @@ public class PolygonOverlay extends View {
     // vértices del polígono
     private List<PointF> vertices = new ArrayList<>();
 
-    // pintura líneas
-    private Paint paintLine;
+    // clase dibujadora
+    private Dibujo dibujo;
 
-    // pintura puntos
-    private Paint paintPoint;
-
-    // pintura relleno
-    private Paint paintFill;
+    // variables para poder mover los botones
+    private int puntoSeleccionado = -1;
+    private static final float RADIO_TOUCH = 60f;
 
     public PolygonOverlay(Context context, AttributeSet attrs) {
         super(context, attrs);
-
-        // lineas
-        paintLine = new Paint();
-        paintLine.setColor(Color.GREEN);
-        paintLine.setStrokeWidth(6f);
-        paintLine.setStyle(Paint.Style.STROKE);
-
-        // puntos
-        paintPoint = new Paint();
-        paintPoint.setColor(Color.YELLOW);
-        paintPoint.setStyle(Paint.Style.FILL);
-
-        // relleno
-        paintFill = new Paint();
-        paintFill.setColor(Color.YELLOW);
-        paintFill.setAlpha(80);
-        paintFill.setStyle(Paint.Style.FILL);
+        this.dibujo = new Dibujo();
     }
 
     // actualizar vertices
@@ -58,32 +40,55 @@ public class PolygonOverlay extends View {
         if(vertices == null) return;
         if(vertices.size() < 2) return;
 
-        // rellenar poligono
-        Path path = new Path();
-
-        PointF first = vertices.get(0);
-
-        path.moveTo(first.x, first.y);
-
-        for(int i = 1; i < vertices.size(); i++){
-            PointF p = vertices.get(i);
-            path.lineTo(p.x, p.y);
-        }
-        path.close();
-
-        canvas.drawPath(path, paintFill);
+        // dibujar poligono
+        dibujo.dibujarPoligono(canvas, vertices, 0);
 
         // dibujar lineas
-        canvas.drawPath(path, paintLine);
+        dibujo.dibujarLineas(canvas, vertices, 0);
 
         // dibujar puntos
-        for(PointF p : vertices){
-            canvas.drawCircle(
-                    p.x,
-                    p.y,
-                    14f,
-                    paintPoint
-            );
+        dibujo.dibujarPuntos(canvas, vertices, 0);
+    }
+
+    public void clear(){
+        vertices.clear();
+        invalidate();
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        float x = event.getX();
+        float y = event.getY();
+
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                break;
+
+            case MotionEvent.ACTION_MOVE:
+                if(puntoSeleccionado != -1){
+                    vertices.get(puntoSeleccionado).x = Math.max(0, Math.min(x, getWidth()));
+                    vertices.get(puntoSeleccionado).y = Math.max(0, Math.min(y, getHeight()));
+                    invalidate();
+                }
+                break;
+
+            case MotionEvent.ACTION_UP:
+                puntoSeleccionado = -1;
+                break;
         }
+
+        return true;
+    }
+
+    private int obtenerPuntoCercano(float x, float y) {
+        for (int i = 0; i < vertices.size(); i++) {
+            PointF p = vertices.get(i);
+            float dx = p.x - x;
+            float dy = p.y - y;
+            float distancia = (float)Math.sqrt(dx * dx + dy * dy);
+
+            if (distancia < RADIO_TOUCH) return i;
+        }
+        return -1;
     }
 }

@@ -20,7 +20,10 @@ public class FrameProcessor {
         List<TrackedVehicle> vehicles =
                 vehicleProcessor.processFrame(frame, ancho, alto);
 
-        return renderizador.dibujarDetecciones(frame, vehicles, true);
+
+
+        return null;
+                //renderizador.dibujarDetecciones(frame, vehicles, vertices, true);
     }
 
     public List<TrackedVehicle> getVehicles(Bitmap frame, int w, int h) {

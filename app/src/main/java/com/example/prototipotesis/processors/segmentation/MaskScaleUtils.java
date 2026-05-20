@@ -15,14 +15,14 @@ public class MaskScaleUtils {
             int targetHeight
     ){
 
-        List<PointF> escalados = new ArrayList<>();
+        List<PointF> resultado = new ArrayList<>();
 
         float scaleX = targetWidth / (float) maskWidth;
 
         float scaleY = targetHeight / (float) maskHeight;
 
         for(PointF p : vertices){
-            escalados.add(
+            resultado.add(
                     new PointF(
                             p.x * scaleX,
                             p.y * scaleY
@@ -30,6 +30,6 @@ public class MaskScaleUtils {
             );
         }
 
-        return escalados;
+        return resultado;
     }
 }

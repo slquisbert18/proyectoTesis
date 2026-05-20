@@ -35,4 +35,19 @@ public class CoordinateUtils {
 
         return new RectF(izquierda, arriba, derecha, abajo);
     }
+
+    public static RectF modelo2Bitmap(
+            BoundingBox caja, int anchoBitmap, int altoBitmap
+    ){
+        float izquierda = (caja.centroX - caja.ancho / 2f) * anchoBitmap;
+
+        float arriba = (caja.centroY - caja.alto / 2f) * altoBitmap;
+
+        float derecha = (caja.centroX + caja.ancho / 2f) * anchoBitmap;
+
+        float abajo = (caja.centroY + caja.alto / 2f) * altoBitmap;
+
+        return new RectF(izquierda, arriba, derecha, abajo);
+    }
+
 }

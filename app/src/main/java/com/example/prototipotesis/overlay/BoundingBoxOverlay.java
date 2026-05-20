@@ -9,22 +9,17 @@ import android.util.AttributeSet;
 import android.view.View;
 
 import com.example.prototipotesis.trackedObject.TrackedVehicle;
+import com.example.prototipotesis.utils.Dibujo;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class BoundingBoxOverlay extends View {
 
-    private Paint pinturaCaja;
-    private Paint pinturaTexto;
-
-    // *********************** PLACAS *****************************
     // lista de placas trackeadas
     private List<TrackedVehicle> vehicles = new ArrayList<>();
+    private final Dibujo dibujo = new Dibujo();
 
-    // ****************** ZONA DE INFRACCION **********************
-    //private RectF infringmentZone = new RectF(300, 800, 900, 1000);
-    private Paint zonePaint;
 
     public BoundingBoxOverlay(Context context){
         super(context);
@@ -48,21 +43,6 @@ public class BoundingBoxOverlay extends View {
         // necesario para limpiar canvas
         setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
-        pinturaCaja = new Paint();
-        pinturaCaja.setStyle(Paint.Style.STROKE);
-        pinturaCaja.setStrokeWidth(5f);
-        pinturaCaja.setColor(Color.GREEN);
-
-        pinturaTexto = new Paint();
-        pinturaTexto.setColor(Color.GREEN);
-        pinturaTexto.setTextSize(50f);
-        pinturaTexto.setStyle(Paint.Style.FILL);
-        pinturaTexto.setFakeBoldText(true);
-
-        zonePaint = new Paint();
-        zonePaint.setColor(Color.RED);
-        zonePaint.setStyle(Paint.Style.STROKE);
-        zonePaint.setStrokeWidth(6f);
     }
 
     // actualizar lista de placas
@@ -91,23 +71,21 @@ public class BoundingBoxOverlay extends View {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
         super.onDraw(canvas);
 
-        // dibujamos zona de infraccion
-        //canvas.drawRect(infringmentZone, zonePaint);
-
         if (vehicles == null || vehicles.isEmpty()) return;
 
         for (TrackedVehicle vehicle : vehicles) {
             // primero definimos el color de la caja
+            int colorBB = 0;
             if (vehicle.inZone) {
-                pinturaCaja.setColor(Color.YELLOW); // amarillo si esta en zona de infraccion
+                colorBB = Color.YELLOW; // amarillo si esta en zona de infraccion
             } else if (vehicle.detectedInfringment) {
-                pinturaCaja.setColor(Color.RED); // rojo si cometio la infraccion
+                colorBB = Color.RED; // rojo si cometio la infraccion
             } else {
-                pinturaCaja.setColor(Color.GREEN); // verde todo posi
+                colorBB = Color.DKGRAY; // gris todo posi
             }
 
             // dibujar rectangulo alrededor del vehiculo
-            canvas.drawRect(vehicle.box, pinturaCaja);
+            dibujo.dibujarRectangulo(canvas, vehicle.box, colorBB);
 
             // posiciones base
             float x = vehicle.box.left;
@@ -131,7 +109,7 @@ public class BoundingBoxOverlay extends View {
                 text += " INFRINGE";
             }
             // mostramos el texto final
-            canvas.drawText(text, x, y, pinturaTexto);
+            dibujo.dibujarTexto(canvas, text, x, y, colorBB);
         }
     }
 }
